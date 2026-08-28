@@ -4,7 +4,7 @@ This repo is the standalone codebase for cairn's token-metering feature: SQLite 
 
 ## Scope
 
-Code, tests, and this file only. Requirements, architecture rationale, user flows, and specs live in the parent repo under `docs/features/token-metering/` — read those before making a design decision here. This file and `.harness/` cover only what's needed to build and verify this codebase.
+Code, tests, and this file only — no requirements, architecture rationale, user flows, or specs. This file and `.harness/` cover only what's needed to build and verify this codebase.
 
 ## Build & verify
 
