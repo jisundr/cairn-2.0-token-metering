@@ -90,6 +90,24 @@ def test_range_bounds_life_has_no_lower_bound():
     assert until == "2026-08-28T00:00:00Z"
 
 
+def test_fetch_calls_includes_subsecond_timestamps_at_the_lower_boundary(tmp_path):
+    root = make_project(
+        tmp_path, "proj",
+        calls=[
+            make_call(request_id="r1", timestamp="2026-08-28T00:00:00.500Z", input_tokens=1, output_tokens=0),
+            make_call(request_id="r2", timestamp="2026-08-27T23:59:59.900Z", input_tokens=2, output_tokens=0),
+        ],
+    )
+    app = server.TokenMeteringApp(root)
+    projects = app.projects()
+
+    rows = app._fetch_calls(projects, since="2026-08-28T00:00:00Z", until="2026-08-29T00:00:00Z")
+
+    # r1 is a sub-second instant just *after* the lower bound - included.
+    # r2 is a sub-second instant just *before* it (the prior day) - excluded.
+    assert {r["request_id"] for r in rows} == {"r1"}
+
+
 # --------------------------------------------------------------------------
 # Rollup correctness: agent, model, tool/skill/mcp, day, heatmap
 # --------------------------------------------------------------------------
@@ -143,6 +161,28 @@ def test_rollup_tool_group_separates_tool_skill_and_mcp_families():
     assert tools == {"Bash": 2}
     assert skills == {"review-pr": 2}
     assert mcp == {"claude-in-chrome": 1}
+
+
+def test_skill_key_buckets_unresolved_detail_instead_of_dropping_the_row():
+    rows = [
+        make_tool_use(tool_use_id="t1", tool_name="Skill", detail=None),
+        make_tool_use(tool_use_id="t2", tool_name="Skill", detail="review-pr"),
+    ]
+    skills = {g["key"]: g["count"] for g in server.rollup_tool_group(rows, key_fn=server._skill_key)}
+    assert skills == {"unknown": 1, "review-pr": 1}
+
+
+def test_day_detail_accepts_an_unpadded_date_and_still_matches_zero_padded_rows(tmp_path):
+    root = make_project(
+        tmp_path, "proj",
+        calls=[make_call(request_id="r1", timestamp="2026-08-05T10:00:00Z", input_tokens=100, output_tokens=0)],
+    )
+    app = server.TokenMeteringApp(root)
+
+    detail = app.day_detail("2026-08-5")  # unpadded day, as a client might send
+
+    assert detail["total_tokens"] == 100
+    assert detail["by_model"][0]["calls"] == 1
 
 
 def test_heatmap_buckets_by_day_of_week_and_hour():
@@ -239,6 +279,42 @@ def test_cross_project_union_combines_rollups_across_known_projects(tmp_path):
     assert totals == {"project-a": 1_000_000, "project-b": 2_000_000}
 
 
+def test_discover_projects_disambiguates_colliding_last_segment_labels(tmp_path):
+    org1 = tmp_path / "org1" / "backend"
+    org2 = tmp_path / "org2" / "backend"
+    org1.mkdir(parents=True)
+    org2.mkdir(parents=True)
+
+    known_projects_path = tmp_path / "known-projects.json"
+    known_projects_path.write_text(json.dumps([str(org2)]))
+
+    projects = server.discover_projects(org1, known_projects_path)
+
+    labels = {p.label for p in projects}
+    assert labels == {"org1/backend", "org2/backend"}
+
+
+def test_call_detail_resolves_the_correct_project_when_labels_collide(tmp_path):
+    org1_dir = tmp_path / "org1"
+    org2_dir = tmp_path / "org2"
+    org1_dir.mkdir()
+    org2_dir.mkdir()
+    root_a = make_project(org1_dir, "backend", calls=[make_call(request_id="a1", session_id="sess-a")])
+    root_b = make_project(org2_dir, "backend", calls=[make_call(request_id="b1", session_id="sess-b")])
+
+    known_projects_path = tmp_path / "known-projects.json"
+    known_projects_path.write_text(json.dumps([str(root_b)]))
+
+    app = server.TokenMeteringApp(root_a, known_projects_path=known_projects_path)
+    assert {p.label for p in app.projects()} == {"org1/backend", "org2/backend"}
+
+    detail_a = app.call_detail("sess-a", 1)
+    detail_b = app.call_detail("sess-b", 1)
+
+    assert detail_a["project"] == "org1/backend"
+    assert detail_b["project"] == "org2/backend"
+
+
 def test_absent_known_projects_file_means_project_scope_only(tmp_path):
     root = make_project(tmp_path, "solo-project")
     app = server.TokenMeteringApp(root, known_projects_path=tmp_path / "does-not-exist.json")
@@ -326,6 +402,19 @@ def test_usage_limit_events_surfaced_separately_and_not_counted_as_calls(tmp_pat
     assert sessions[0]["usage_limit_hit"] is True
 
 
+def test_rollup_sessions_normalizes_a_null_agent_instead_of_crashing():
+    calls = [
+        make_call(request_id="r1", session_id="sess-1", agent=None),
+        make_call(request_id="r2", session_id="sess-1", agent="builder"),
+    ]
+    for row in calls:
+        row["project"] = "proj"
+
+    sessions = server.rollup_sessions(calls, [])
+
+    assert sessions[0]["agents"] == ["builder", "unknown"]
+
+
 def test_session_without_usage_limit_event_reports_false():
     events = []
     calls = [make_call(request_id="r1", session_id="sess-1")]
@@ -386,6 +475,28 @@ def test_call_detail_reads_prompt_and_response_from_transcript_when_present(tmp_
     assert detail["available"] is True
     assert detail["prompt"] == "What's the token total?"
     assert detail["response"] == "It's 300 tokens."
+
+
+def test_extract_call_content_skips_tool_result_echo_to_find_the_real_prompt():
+    entries = [
+        {"type": "user", "message": {"role": "user", "content": "real question"}},
+        {
+            "type": "assistant",
+            "requestId": "r1",
+            "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}]},
+        },
+        {
+            "type": "user",
+            "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "output"}]},
+        },
+        {
+            "type": "assistant",
+            "requestId": "r2",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "the answer"}]},
+        },
+    ]
+
+    assert server._extract_call_content(entries, "r2") == ("real question", "the answer")
 
 
 def test_call_detail_falls_back_to_subagent_transcript(tmp_path):

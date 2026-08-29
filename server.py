@@ -60,40 +60,71 @@ class Project:
         return db.db_path(self.root / ".cairn")
 
 
+def _disambiguate_labels(roots: list[Path]) -> list[str]:
+    """`root.name` for each root, except that two or more roots sharing the
+    same name (e.g. `/org1/backend` and `/org2/backend`) get enough of
+    their parent path prefixed - joined by "/" - to be unique among this
+    set, rather than silently colliding on the same plain label. The
+    common single-project (or no-collision) case keeps plain `root.name`.
+    """
+    names = [r.name for r in roots]
+    counts: dict[str, int] = defaultdict(int)
+    for name in names:
+        counts[name] += 1
+    if all(counts[name] == 1 for name in names):
+        return names
+
+    groups: dict[str, list[int]] = defaultdict(list)
+    for i, name in enumerate(names):
+        groups[name].append(i)
+
+    labels = list(names)
+    for name, indices in groups.items():
+        if len(indices) == 1:
+            continue
+        depth = 2
+        while True:
+            candidates = ["/".join(roots[i].parts[-depth:]) for i in indices]
+            exhausted = all(depth >= len(roots[i].parts) for i in indices)
+            if len(set(candidates)) == len(candidates) or exhausted:
+                for i, candidate in zip(indices, candidates):
+                    labels[i] = candidate
+                break
+            depth += 1
+    return labels
+
+
 def discover_projects(local_root: Path, known_projects_path: Path | None = None) -> list[Project]:
     """This project, plus every other project path listed in
     `known-projects.json`, when that file exists and is non-empty. Absent
     or empty -> this project only (the common, project-scoped-install case).
     """
     local_root = Path(local_root).resolve()
-    projects = [Project(label=local_root.name, root=local_root)]
+    roots = [local_root]
     seen = {local_root}
 
     path = known_projects_path if known_projects_path is not None else DEFAULT_KNOWN_PROJECTS_PATH
-    if not path.exists():
-        return projects
-    try:
-        raw = path.read_text().strip()
-    except OSError:
-        return projects
-    if not raw:
-        return projects
-    try:
-        entries = json.loads(raw)
-    except json.JSONDecodeError:
-        return projects
-    if not isinstance(entries, list):
-        return projects
+    if path.exists():
+        try:
+            raw = path.read_text().strip()
+        except OSError:
+            raw = ""
+        if raw:
+            try:
+                entries = json.loads(raw)
+            except json.JSONDecodeError:
+                entries = []
+            if isinstance(entries, list):
+                for entry in entries:
+                    if not isinstance(entry, str) or not entry:
+                        continue
+                    other_root = Path(entry).resolve()
+                    if other_root in seen:
+                        continue
+                    seen.add(other_root)
+                    roots.append(other_root)
 
-    for entry in entries:
-        if not isinstance(entry, str) or not entry:
-            continue
-        other_root = Path(entry).resolve()
-        if other_root in seen:
-            continue
-        seen.add(other_root)
-        projects.append(Project(label=other_root.name, root=other_root))
-    return projects
+    return [Project(label=label, root=root) for label, root in zip(_disambiguate_labels(roots), roots)]
 
 
 def _filter_projects(projects: list[Project], project_filter: str | None) -> list[Project]:
@@ -238,7 +269,10 @@ def _tool_key(row: dict):
 def _skill_key(row: dict):
     if row["tool_name"] != "Skill":
         return None
-    return row["detail"]
+    # A genuine Skill row can still have detail=None (parser.py writes this
+    # when the tool input lacks a "skill" key); bucket it explicitly rather
+    # than returning None, which rollup_tool_group treats as "exclude".
+    return row["detail"] if row["detail"] is not None else "unknown"
 
 
 def _mcp_key(row: dict):
@@ -309,7 +343,7 @@ def rollup_sessions(calls: list[dict], events: list[dict]) -> list[dict]:
                 "project": project_label,
                 "started": min(timestamps),
                 "ended": max(timestamps),
-                "agents": sorted({r["agent"] for r in group_rows}),
+                "agents": sorted({r["agent"] if r["agent"] is not None else "unknown" for r in group_rows}),
                 "calls": len(group_rows),
                 "tokens": sum(_total_tokens(r) for r in group_rows),
                 "cost": pricing.group_cost(group_rows),
@@ -418,6 +452,16 @@ def _tool_result_text(content) -> str:
     return ""
 
 
+def _is_tool_result_only(content) -> bool:
+    """True for a role="user" message whose content is exclusively
+    tool_result blocks (the standard shape tool results are delivered in) -
+    i.e. it carries no actual human-authored prompt text.
+    """
+    if not isinstance(content, list) or not content:
+        return False
+    return all(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+
+
 def _extract_call_content(entries: list[dict], request_id: str) -> tuple[str, str] | None:
     """(prompt, response) for the entries sharing `request_id`, or None if
     that request_id isn't present. `response` concatenates every text block
@@ -446,9 +490,14 @@ def _extract_call_content(entries: list[dict], request_id: str) -> tuple[str, st
     prompt_text = ""
     for i in range(first_index - 1, -1, -1):
         message = entries[i].get("message")
-        if isinstance(message, dict) and message.get("role") == "user":
-            prompt_text = _tool_result_text(message.get("content"))
-            break
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if _is_tool_result_only(content):
+            # A tool_result echo, not a real prompt - keep walking backward.
+            continue
+        prompt_text = _tool_result_text(content)
+        break
 
     return prompt_text, "\n".join(response_parts)
 
@@ -528,12 +577,18 @@ class TokenMeteringApp:
             try:
                 query = f"SELECT * FROM {table}"
                 clauses, params = [], []
+                # Compare only whole-second precision on both sides: captured
+                # timestamps commonly carry sub-second fractions (e.g.
+                # "...:00.500Z"), and lexicographic comparison against a
+                # whole-second `since`/`until` bound (e.g. "...:00Z") fails
+                # at the boundary because "." sorts before "Z"/digits.
+                # Truncating both to "YYYY-MM-DDTHH:MM:SS" avoids that.
                 if since is not None:
-                    clauses.append("timestamp >= ?")
-                    params.append(since)
+                    clauses.append("substr(timestamp, 1, 19) >= ?")
+                    params.append(since[:19])
                 if until is not None:
-                    clauses.append("timestamp < ?")
-                    params.append(until)
+                    clauses.append("substr(timestamp, 1, 19) < ?")
+                    params.append(until[:19])
                 if clauses:
                     query += " WHERE " + " AND ".join(clauses)
                 for row in conn.execute(query, params):
@@ -599,8 +654,9 @@ class TokenMeteringApp:
 
     def day_detail(self, date_str: str, project_filter: str | None = None) -> dict:
         projects = _filter_projects(self.projects(), project_filter)
-        since = f"{date_str}T00:00:00Z"
-        until = _iso(datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=1))
+        day_start = datetime.strptime(date_str, "%Y-%m-%d")
+        since = _iso(day_start)
+        until = _iso(day_start + timedelta(days=1))
         rows = self._fetch_calls(projects, since=since, until=until)
         by_model = rollup_group(rows, key_fn=lambda r: r["model"])
         any_unknown = any(g["cost"] is None for g in by_model)
