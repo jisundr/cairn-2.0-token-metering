@@ -141,7 +141,7 @@ function AgentRow({
                       data-testid={`trace-toggle-${sessionId}-${call.position}`}
                       className="inline-flex h-4.75 w-4.75 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-dashed border-(--graphite) text-[10px] text-(--ink-soft) select-none"
                     >
-                      ⌄
+                      ⋯
                     </button>
                   </TraceTd>
                 </tr>
