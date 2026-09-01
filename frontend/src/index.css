@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #eef0ee;
+  --paper-line: #d7dbd8;
+  --ink: #2a2d2c;
+  --ink-soft: #6b706e;
+  --graphite: #9aa19e;
+  --block: #dde1de;
+  --block-line: #b7bdb9;
+  --window: #ffffff;
+  --blue: #4f6f92;
+  --blue-soft: #e4eaf1;
+  --flag: #a94a3d;
+  --flag-soft: #f4e3e0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family:
+    "Archivo", -apple-system, "Segoe UI", sans-serif;
+}
+
+.font-label {
+  font-family: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
