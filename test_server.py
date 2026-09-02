@@ -3,7 +3,7 @@ import json
 import sys
 import threading
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -185,19 +185,48 @@ def test_day_detail_accepts_an_unpadded_date_and_still_matches_zero_padded_rows(
     assert detail["by_model"][0]["calls"] == 1
 
 
-def test_heatmap_buckets_by_day_of_week_and_hour():
-    # 2026-08-24 is a Monday.
-    rows = [
-        make_call(request_id="r1", timestamp="2026-08-24T09:00:00Z"),
-        make_call(request_id="r2", timestamp="2026-08-24T09:30:00Z"),
-        make_call(request_id="r3", timestamp="2026-08-25T14:00:00Z"),  # Tuesday
-    ]
-    grid = {(c["day_of_week"], c["hour"]): c for c in server.rollup_heatmap(rows)}
+def test_heatmap_returns_raw_per_call_timestamp_and_tokens_rows(tmp_path):
+    # Bucketing (day-of-week/hour, in the viewer's local time zone) happens
+    # client-side in ActivityHeatmap.tsx - the server only projects each
+    # ranged call down to {timestamp, tokens}, unaggregated.
+    root = make_project(
+        tmp_path, "proj",
+        calls=[
+            make_call(request_id="r1", timestamp="2026-08-24T09:00:00Z", input_tokens=100, output_tokens=50),
+            make_call(request_id="r2", timestamp="2026-08-25T14:00:00Z", input_tokens=10, output_tokens=5),
+        ],
+    )
+    app = server.TokenMeteringApp(root)
 
-    assert len(grid) == 7 * 24
-    assert grid[(0, 9)]["calls"] == 2
-    assert grid[(1, 14)]["calls"] == 1
-    assert grid[(0, 10)]["calls"] == 0
+    rows = app.heatmap("life")
+
+    assert {r["timestamp"] for r in rows} == {"2026-08-24T09:00:00Z", "2026-08-25T14:00:00Z"}
+    by_ts = {r["timestamp"]: r["tokens"] for r in rows}
+    assert by_ts["2026-08-24T09:00:00Z"] == 150
+    assert by_ts["2026-08-25T14:00:00Z"] == 15
+    assert all(set(r) == {"timestamp", "tokens"} for r in rows)
+
+
+def test_heatmap_is_bounded_by_range(tmp_path):
+    # Relative to the actual wall clock (not a hardcoded date), matching how
+    # `heatmap()`'s `range_key` -> `range_bounds()` -> `datetime.now()` chain
+    # resolves "7d" in production - a hardcoded old/new pair would drift out
+    # of (or into) range depending on when the suite runs.
+    now = datetime.now(timezone.utc)
+    old_ts = (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    recent_ts = (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    root = make_project(
+        tmp_path, "proj",
+        calls=[
+            make_call(request_id="old", timestamp=old_ts),
+            make_call(request_id="recent", timestamp=recent_ts),
+        ],
+    )
+    app = server.TokenMeteringApp(root)
+
+    rows = app.heatmap("7d")
+
+    assert {r["timestamp"] for r in rows} == {recent_ts}
 
 
 # --------------------------------------------------------------------------
@@ -496,9 +525,7 @@ def test_cold_start_missing_db_returns_empty_results(tmp_path):
     assert app.agent_rollup("7d") == []
     assert app.sessions("7d") == []
     assert app.tool_rollup("7d") == []
-    heatmap = app.heatmap("7d")
-    assert len(heatmap) == 7 * 24
-    assert all(c["calls"] == 0 for c in heatmap)
+    assert app.heatmap("7d") == []
 
     timeseries = app.timeseries("life")
     assert timeseries["points"] == []

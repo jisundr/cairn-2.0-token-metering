@@ -5,8 +5,9 @@ Design: docs/features/token-metering/03-architecture.md's Serving side.
 
 Binds localhost only, runs in the foreground, stops on Ctrl-C. Serves a
 JSON API over `db.py`'s tables (rollups by day/session/agent/tool/skill/
-MCP-server, a day-of-week x hour-of-day heatmap, per-session call traces,
-an on-demand prompt/response lookup) plus, once M5 ships `static/`, the
+MCP-server, a per-call feed the client buckets into its own activity
+heatmap, per-session call traces, an on-demand prompt/response lookup)
+plus, once M5 ships `static/`, the
 compiled frontend with a catch-all -> `index.html` fallback for its
 client-side `/call/<session>/<n>` route. Prices are applied at read time
 via `pricing.py`; this module never writes to `tokens.db`.
@@ -310,24 +311,6 @@ def rollup_timeseries(rows: list[dict], since: str, until: str, bucket: str) -> 
             }
         )
     return points
-
-
-def rollup_heatmap(rows: list[dict]) -> list[dict]:
-    """Full 7 (day-of-week, Monday=0) x 24 (hour-of-day, UTC) grid, zero-
-    filled, bucketing `calls.timestamp`.
-    """
-    grid = {(dow, hour): {"calls": 0, "tokens": 0} for dow in range(7) for hour in range(24)}
-    for row in rows:
-        dt = datetime.fromisoformat(row["timestamp"])
-        cell = grid[(dt.weekday(), dt.hour)]
-        cell["calls"] += 1
-        cell["tokens"] += _total_tokens(row)
-
-    return [
-        {"day_of_week": dow, "hour": hour, "calls": grid[(dow, hour)]["calls"], "tokens": grid[(dow, hour)]["tokens"]}
-        for dow in range(7)
-        for hour in range(24)
-    ]
 
 
 def rollup_sessions(calls: list[dict], events: list[dict]) -> list[dict]:
@@ -713,7 +696,15 @@ class TokenMeteringApp:
         return rollup_tool_group(self._ranged_tool_uses(range_key, project_filter), key_fn=_mcp_key)
 
     def heatmap(self, range_key: str, project_filter: str | None = None) -> list[dict]:
-        return rollup_heatmap(self._ranged_calls(range_key, project_filter))
+        """Raw per-call `{timestamp, tokens}` rows for the range, unaggregated
+        - the client buckets these into day-of-week/hour cells itself, in its
+        own local time zone (`ActivityHeatmap.tsx`), which a server-side UTC
+        bucketing can't be re-localized into after the fact.
+        """
+        return [
+            {"timestamp": row["timestamp"], "tokens": _total_tokens(row)}
+            for row in self._ranged_calls(range_key, project_filter)
+        ]
 
     def usage_limit_events(self, range_key: str, project_filter: str | None = None) -> list[dict]:
         projects = _filter_projects(self.projects(), project_filter)

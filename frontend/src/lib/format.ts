@@ -15,10 +15,13 @@ export function formatDuration(seconds: number | null): string {
 }
 
 export function formatTimeOfDay(iso: string): string {
-  // ISO strings from server.py are UTC ("...Z"); render the wall-clock UTC
-  // time rather than re-localizing, to keep tests' seeded timestamps and
-  // rendered output trivially comparable.
-  return iso.slice(11, 19);
+  // ISO strings from server.py are UTC ("...Z"); Date's local-time getters
+  // render the viewer's own time zone, which the browser already knows.
+  const d = new Date(iso);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
 }
 
 export function formatDayLabel(dateStr: string): string {
@@ -28,9 +31,12 @@ export function formatDayLabel(dateStr: string): string {
 }
 
 export function formatStarted(iso: string): string {
-  const [date, time] = iso.split("T");
-  const [, month, day] = date.split("-");
-  return `${month}/${day} ${time.slice(0, 5)}`;
+  const d = new Date(iso);
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${month}/${day} ${hh}:${mm}`;
 }
 
 export function formatRelativeToNow(iso: string, now: Date = new Date()): string {

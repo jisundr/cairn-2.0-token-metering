@@ -9,7 +9,7 @@ import type {
   DayDetail,
   Envelope,
   GroupRollupRow,
-  HeatmapCell,
+  HeatmapRow,
   ProjectSummary,
   RangeKey,
   SessionSummary,
@@ -63,7 +63,7 @@ export const api = {
 
   mcpRollup: ({ range, project }: RangeParams) => apiGet<CountRollupRow[]>("/rollup/mcp-server", { range, project }),
 
-  heatmap: ({ range, project }: RangeParams) => apiGet<HeatmapCell[]>("/heatmap", { range, project }),
+  heatmap: ({ range, project }: RangeParams) => apiGet<HeatmapRow[]>("/heatmap", { range, project }),
 
   usageLimitEvents: ({ range, project }: RangeParams) =>
     apiGet<UsageLimitEvent[]>("/usage-limit-events", { range, project }),

@@ -1,4 +1,4 @@
-import type { HeatmapCell } from "../api/types";
+import type { HeatmapRow } from "../api/types";
 import { cn } from "../lib/utils";
 
 const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -19,11 +19,27 @@ function levelFor(tokens: number, max: number): number {
   return 4;
 }
 
-// 7 (day-of-week) x 24 (hour) grid from /api/heatmap - zero-filled server
-// side, so this always has all 168 cells (03-architecture.md).
-export function ActivityHeatmap({ cells }: { cells: HeatmapCell[] }) {
-  const max = Math.max(...cells.map((c) => c.tokens), 0);
-  const byDowHour = new Map(cells.map((c) => [`${c.day_of_week}-${c.hour}`, c]));
+// getDay() is Sunday=0..Saturday=6; DOW_LABELS (and the grid below) are
+// Monday=0..Sunday=6, matching server.py's old Python weekday() convention.
+function localDow(d: Date): number {
+  return (d.getDay() + 6) % 7;
+}
+
+// 7 (day-of-week) x 24 (hour) grid, bucketed here from /api/heatmap's raw
+// per-call rows using each row's *local* Date fields - not the server's
+// UTC day/hour - so the grid reflects the viewer's own time zone, DST
+// transitions included.
+export function ActivityHeatmap({ calls }: { calls: HeatmapRow[] }) {
+  const cells = new Map<string, { calls: number; tokens: number }>();
+  for (const row of calls) {
+    const d = new Date(row.timestamp);
+    const key = `${localDow(d)}-${d.getHours()}`;
+    const cell = cells.get(key) ?? { calls: 0, tokens: 0 };
+    cell.calls += 1;
+    cell.tokens += row.tokens;
+    cells.set(key, cell);
+  }
+  const max = Math.max(...Array.from(cells.values(), (c) => c.tokens), 0);
 
   return (
     <div className="mt-1.5 flex flex-col gap-[3px]" data-testid="activity-heatmap">
@@ -37,11 +53,12 @@ export function ActivityHeatmap({ cells }: { cells: HeatmapCell[] }) {
         <div key={label} className="grid grid-cols-[26px_repeat(24,1fr)] items-center gap-[3px]">
           <span className="font-label text-[10px] text-(--ink-soft)">{label}</span>
           {Array.from({ length: 24 }, (_, hour) => {
-            const cell = byDowHour.get(`${dow}-${hour}`);
+            const cell = cells.get(`${dow}-${hour}`);
             const level = levelFor(cell?.tokens ?? 0, max);
             return (
               <span
                 key={hour}
+                data-testid={`heatmap-cell-${dow}-${hour}`}
                 title={cell ? `${label} ${hour}:00 — ${cell.calls} calls` : undefined}
                 className={cn("aspect-square rounded-[2px]", LEVEL_CLASSES[level])}
               />

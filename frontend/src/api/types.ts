@@ -55,10 +55,12 @@ export interface CountRollupRow {
   count: number;
 }
 
-export interface HeatmapCell {
-  day_of_week: number;
-  hour: number;
-  calls: number;
+// Raw per-call row for the activity heatmap's range (the last 7 days) -
+// ActivityHeatmap.tsx buckets these into day-of-week/hour cells itself,
+// using each row's local `Date` fields rather than a server-computed UTC
+// bucket, so a DST transition inside the range still lands correctly.
+export interface HeatmapRow {
+  timestamp: string;
   tokens: number;
 }
 
