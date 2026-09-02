@@ -371,6 +371,8 @@ def build_session_trace(session_id: str, calls: list[dict]) -> dict | None:
         return None
 
     calls = sorted(calls, key=lambda r: (r["timestamp"], r["request_id"]))
+    global_position = {row["request_id"]: i + 1 for i, row in enumerate(calls)}
+
     by_agent = defaultdict(list)
     for row in calls:
         by_agent[row["agent"]].append(row)
@@ -385,6 +387,7 @@ def build_session_trace(session_id: str, calls: list[dict]) -> dict | None:
             trace.append(
                 {
                     "position": i + 1,
+                    "global_position": global_position[row["request_id"]],
                     "request_id": row["request_id"],
                     "timestamp": row["timestamp"],
                     "model": row["model"],

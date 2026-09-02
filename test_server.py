@@ -205,7 +205,7 @@ def test_heatmap_buckets_by_day_of_week_and_hour():
 # --------------------------------------------------------------------------
 
 
-def test_session_trace_orders_calls_and_groups_by_agent():
+def test_session_trace_orders_calls_and_groups_by_agent(tmp_path):
     calls = [
         make_call(request_id="r-main-1", agent="main", timestamp="2026-08-27T14:00:00Z"),
         make_call(request_id="r-builder-1", agent="builder", timestamp="2026-08-27T14:05:00Z"),
@@ -224,6 +224,26 @@ def test_session_trace_orders_calls_and_groups_by_agent():
     builder_trace = trace["agents"][1]["trace"]
     assert [c["request_id"] for c in builder_trace] == ["r-builder-1", "r-builder-2"]
     assert builder_trace[0]["duration_seconds"] == pytest.approx(600.0)  # 10 min later
+
+    # Whole-session ordering (`global_position`) is independent of which
+    # agent a call belongs to, unlike each agent's own `position` which
+    # restarts at 1 - builder's 2nd call (r-builder-2, per-agent position 2)
+    # is the whole session's 3rd call, ahead of main's 2nd call.
+    assert [c["global_position"] for c in main_trace] == [1, 4]
+    assert [c["position"] for c in main_trace] == [1, 2]
+    assert [c["global_position"] for c in builder_trace] == [2, 3]
+    assert [c["position"] for c in builder_trace] == [1, 2]
+
+    # `global_position` must agree with what `call_detail()` independently
+    # computes as `n` for the same call - the regression this spec exists
+    # to make impossible to violate silently again.
+    root = make_project(tmp_path, "proj", calls=calls)
+    app = server.TokenMeteringApp(root)
+    for agent_trace in (main_trace, builder_trace):
+        for call in agent_trace:
+            detail = app.call_detail("sess-1", call["global_position"])
+            assert detail is not None
+            assert detail["request_id"] == call["request_id"]
 
 
 def test_session_trace_returns_none_for_unknown_session():

@@ -84,6 +84,7 @@ export interface UsageLimitEvent {
 
 export interface TraceCall {
   position: number;
+  global_position: number;
   request_id: string;
   timestamp: string;
   model: string;

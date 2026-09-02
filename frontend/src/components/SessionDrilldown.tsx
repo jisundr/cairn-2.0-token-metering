@@ -18,18 +18,6 @@ export function SessionDrilldown({ session, project, onOpenCall }: SessionDrilld
 
   const maxTokens = Math.max(...trace.agents.map((a) => a.tokens), 1);
 
-  // server.py's `/api/call/<session>/<n>` numbers `n` across the *whole*
-  // session in chronological order (`calls.sort(key=(timestamp,
-  // request_id))` in `call_detail`), not per-agent like each trace row's
-  // own `position` (build_session_trace's per-agent `i + 1`). Recomputing
-  // that same global ordering here from `request_id` is what lets a
-  // trace row's detail toggle open the right call.
-  const globalPosition = new Map<string, number>();
-  trace.agents
-    .flatMap((a) => a.trace)
-    .sort((a, b) => (a.timestamp === b.timestamp ? (a.request_id < b.request_id ? -1 : 1) : a.timestamp < b.timestamp ? -1 : 1))
-    .forEach((call, i) => globalPosition.set(call.request_id, i + 1));
-
   return (
     <div className="rounded-lg border border-(--block-line) bg-white" data-testid="session-drilldown">
       <div className="flex flex-wrap items-baseline gap-2.5 rounded-t-md border-b border-(--block-line) bg-(--block) px-4.5 py-3.5">
@@ -46,7 +34,6 @@ export function SessionDrilldown({ session, project, onOpenCall }: SessionDrilld
           agent={agent}
           maxTokens={maxTokens}
           sessionId={session.session_id}
-          globalPosition={globalPosition}
           onOpenCall={onOpenCall}
         />
       ))}
@@ -58,13 +45,11 @@ function AgentRow({
   agent,
   maxTokens,
   sessionId,
-  globalPosition,
   onOpenCall,
 }: {
   agent: AgentTrace;
   maxTokens: number;
   sessionId: string;
-  globalPosition: Map<string, number>;
   onOpenCall: (sessionId: string, position: number) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -137,7 +122,7 @@ function AgentRow({
                   <TraceTd center>
                     <button
                       type="button"
-                      onClick={() => onOpenCall(sessionId, globalPosition.get(call.request_id) ?? call.position)}
+                      onClick={() => onOpenCall(sessionId, call.global_position)}
                       data-testid={`trace-toggle-${sessionId}-${call.position}`}
                       className="inline-flex h-4.75 w-4.75 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-dashed border-(--graphite) text-[10px] text-(--ink-soft) select-none"
                     >
