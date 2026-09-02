@@ -28,6 +28,29 @@ test.describe("populated dashboard", () => {
     await expect(page.getByTestId("session-row-e2e-session-other")).toBeVisible();
   });
 
+  test("sessions table defaults to the last-30-days range and switches to all time", async ({ page }) => {
+    let lastRangeParam: string | null = null;
+    await page.route("**/api/rollup/session**", (route) => {
+      lastRangeParam = new URL(route.request().url()).searchParams.get("range");
+      route.continue();
+    });
+
+    await page.goto("/");
+    await expect(page.getByTestId("dashboard")).toBeVisible();
+    await expect.poll(() => lastRangeParam).toBe("30d");
+    await expect(page.getByTestId("sessions-range-30d")).toHaveClass(/border-\(--blue\)/);
+
+    await page.getByTestId("sessions-range-life").click();
+    await expect.poll(() => lastRangeParam).toBe("life");
+    await expect(page.getByTestId("sessions-range-life")).toHaveClass(/border-\(--blue\)/);
+  });
+
+  test("sessions table sits in a bounded, scrollable container", async ({ page }) => {
+    const table = page.getByTestId("sessions-table");
+    const overflowY = await table.evaluate((el) => getComputedStyle(el.parentElement as Element).overflowY);
+    expect(overflowY).toBe("auto");
+  });
+
   test("shows the usage-limit warning banner for the flagged session", async ({ page }) => {
     const banner = page.getByTestId("usage-limit-banner");
     await expect(banner).toBeVisible();
@@ -78,9 +101,27 @@ test.describe("populated dashboard", () => {
     await expect(trace.getByTestId("trace-row-e2e-session-main-1")).toBeVisible();
   });
 
+  test("drilldown auto-expands the token-dominant agent and shows a non-duplicate summary", async ({ page }) => {
+    const drilldown = page.getByTestId("session-drilldown");
+    await expect(drilldown).toBeVisible();
+
+    // builder has the most tokens across e2e-session-main's calls, so its
+    // row is expanded without any click; main (fewer tokens) stays closed.
+    await expect(page.getByTestId("agent-trace-builder")).toBeVisible();
+    await expect(page.getByTestId("agent-trace-main")).toHaveCount(0);
+
+    await expect(drilldown).toContainText("runtime");
+    await expect(drilldown).toContainText("builder dominant");
+    // The redundant started/agents-count/tokens/cost summary (already shown
+    // in the sessions table row) is gone from the header.
+    await expect(drilldown).not.toContainText("agents ·");
+  });
+
   test("opens the trace drawer with an available transcript", async ({ page }) => {
     await page.getByTestId("agent-row-toggle-main").click();
-    await page.getByTestId("trace-toggle-e2e-session-main-1").click();
+    // builder is also auto-expanded by default (most tokens) and has its
+    // own per-agent position 1, so scope to main's own trace table.
+    await page.getByTestId("agent-trace-main").getByTestId("trace-toggle-e2e-session-main-1").click();
 
     const drawer = page.getByTestId("trace-drawer");
     await expect(drawer).toBeVisible();
@@ -147,7 +188,9 @@ test.describe("populated dashboard", () => {
   test("opens the trace drawer with an unavailable transcript for a call with no transcript entry", async ({
     page,
   }) => {
-    await page.getByTestId("agent-row-toggle-builder").click();
+    // builder has the most tokens in this session, so its row is
+    // auto-expanded by default (SessionDrilldown.tsx) - no toggle click needed.
+    await expect(page.getByTestId("agent-trace-builder")).toBeVisible();
     await page.getByTestId("trace-toggle-e2e-session-main-1").click();
 
     const drawer = page.getByTestId("trace-drawer");
@@ -158,7 +201,7 @@ test.describe("populated dashboard", () => {
 
   test("drawer's full-page link navigates to the standalone call page, in-app", async ({ page }) => {
     await page.getByTestId("agent-row-toggle-main").click();
-    await page.getByTestId("trace-toggle-e2e-session-main-1").click();
+    await page.getByTestId("agent-trace-main").getByTestId("trace-toggle-e2e-session-main-1").click();
     await page.getByTestId("trace-drawer-fullpage-link").click();
 
     await expect(page.getByTestId("call-page")).toBeVisible();
@@ -168,7 +211,7 @@ test.describe("populated dashboard", () => {
 
   test("drawer closes via its backdrop", async ({ page }) => {
     await page.getByTestId("agent-row-toggle-main").click();
-    await page.getByTestId("trace-toggle-e2e-session-main-1").click();
+    await page.getByTestId("agent-trace-main").getByTestId("trace-toggle-e2e-session-main-1").click();
     await expect(page.getByTestId("trace-drawer")).toBeVisible();
 
     await page.getByTestId("trace-drawer-backdrop").click();

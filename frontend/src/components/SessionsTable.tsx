@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { SessionSummary } from "../api/types";
+import type { RangeKey, SessionSummary } from "../api/types";
 import { formatCost, formatStarted } from "../lib/format";
 import { cn } from "../lib/utils";
 
@@ -11,6 +11,8 @@ interface SessionsTableProps {
   projectFilter: string;
   onProjectFilterChange: (project: string) => void;
   projectLabels: string[];
+  sessionsRange: RangeKey;
+  onSessionsRangeChange: (range: RangeKey) => void;
 }
 
 // Most-recent session auto-selected, click-to-select; a project column and
@@ -24,6 +26,8 @@ export function SessionsTable({
   projectFilter,
   onProjectFilterChange,
   projectLabels,
+  sessionsRange,
+  onSessionsRangeChange,
 }: SessionsTableProps) {
   const visible = multiProject && projectFilter !== "all" ? sessions.filter((s) => s.project === projectFilter) : sessions;
 
@@ -33,6 +37,21 @@ export function SessionsTable({
       <p className="font-label -mt-1.5 mb-3 text-[11px] text-(--ink-soft)">
         Most recent session shown below by default — click any row to change it.
       </p>
+
+      <div className="mb-3.5 flex flex-wrap gap-1.5" data-testid="sessions-range">
+        <FilterPill
+          label="Last 30 days"
+          active={sessionsRange === "30d"}
+          onClick={() => onSessionsRangeChange("30d")}
+          testId="sessions-range-30d"
+        />
+        <FilterPill
+          label="All time"
+          active={sessionsRange === "life"}
+          onClick={() => onSessionsRangeChange("life")}
+          testId="sessions-range-life"
+        />
+      </div>
 
       {multiProject && (
         <div className="mb-3.5 flex flex-wrap gap-1.5" data-testid="project-filter">
@@ -48,51 +67,63 @@ export function SessionsTable({
         </div>
       )}
 
-      <table className="w-full border-collapse text-[13px]" data-testid="sessions-table">
-        <thead>
-          <tr>
-            <Th>Started</Th>
-            <Th>Session</Th>
-            {multiProject && <Th>Project</Th>}
-            <Th>Agents</Th>
-            <Th>Tokens</Th>
-            <Th>Est. cost</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map((s) => (
-            <tr
-              key={`${s.project}-${s.session_id}`}
-              data-testid={`session-row-${s.session_id}`}
-              onClick={() => onSelect(s.session_id)}
-              className={cn(
-                "cursor-pointer border-b border-dashed border-(--paper-line)",
-                selectedSessionId === s.session_id && "bg-(--blue-soft)",
-              )}
-            >
-              <Td>{formatStarted(s.started)}</Td>
-              <Td>
-                {s.usage_limit_hit && <span className="mr-1.5 inline-block h-1.75 w-1.75 rounded-full bg-(--flag)" />}
-                {s.session_id}
-              </Td>
-              {multiProject && <Td>{s.project}</Td>}
-              <Td>{s.agents.length}</Td>
-              <Td>{s.tokens.toLocaleString()}</Td>
-              <Td>{formatCost(s.cost)}</Td>
+      <div className="max-h-[420px] overflow-y-auto rounded-md border border-(--paper-line)">
+        <table className="w-full border-collapse text-[13px]" data-testid="sessions-table">
+          <thead className="sticky top-0 z-10 bg-white">
+            <tr>
+              <Th>Started</Th>
+              <Th>Session</Th>
+              {multiProject && <Th>Project</Th>}
+              <Th>Agents</Th>
+              <Th>Tokens</Th>
+              <Th>Est. cost</Th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {visible.map((s) => (
+              <tr
+                key={`${s.project}-${s.session_id}`}
+                data-testid={`session-row-${s.session_id}`}
+                onClick={() => onSelect(s.session_id)}
+                className={cn(
+                  "cursor-pointer border-b border-dashed border-(--paper-line)",
+                  selectedSessionId === s.session_id && "bg-(--blue-soft)",
+                )}
+              >
+                <Td>{formatStarted(s.started)}</Td>
+                <Td>
+                  {s.usage_limit_hit && <span className="mr-1.5 inline-block h-1.75 w-1.75 rounded-full bg-(--flag)" />}
+                  {s.session_id}
+                </Td>
+                {multiProject && <Td>{s.project}</Td>}
+                <Td>{s.agents.length}</Td>
+                <Td>{s.tokens.toLocaleString()}</Td>
+                <Td>{formatCost(s.cost)}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
-function FilterPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function FilterPill({
+  label,
+  active,
+  onClick,
+  testId,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  testId?: string;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      data-testid={`project-filter-${label}`}
+      data-testid={testId ?? `project-filter-${label}`}
       className={cn(
         "font-label cursor-pointer rounded-full border border-(--block-line) px-3 py-1 text-[10.5px] tracking-wide text-(--ink-soft) uppercase select-none",
         active && "border-(--blue) bg-(--blue-soft) font-bold text-(--blue)",
