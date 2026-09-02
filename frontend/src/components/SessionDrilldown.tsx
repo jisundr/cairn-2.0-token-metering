@@ -71,10 +71,10 @@ function AgentRow({
         <span className={"font-label text-[11px] " + (open ? "text-(--blue)" : "text-(--ink-soft)")}>
           {open ? "▾" : "▸"}
         </span>
-        <span className="font-semibold">
-          {name}
+        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold leading-tight">
+          <span className="truncate">{name}</span>
           {isSubagent && (
-            <span className="font-label ml-1.5 rounded border border-(--block-line) px-1 py-0.5 text-[9.5px] lowercase text-(--ink-soft)">
+            <span className="font-label shrink-0 rounded border border-(--block-line) px-1 py-0.5 text-[9.5px] lowercase text-(--ink-soft)">
               subagent
             </span>
           )}

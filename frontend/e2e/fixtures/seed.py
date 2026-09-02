@@ -27,6 +27,32 @@ SESSION_MAIN = "e2e-session-main"
 SESSION_OTHER = "e2e-session-other"
 AVAILABLE_REQUEST_ID = "req-available-1"
 UNAVAILABLE_REQUEST_ID = "req-unavailable-2"
+LONG_SUBAGENT_NAME = "cairn:planner"
+
+# Extra plain (non-Skill, non-mcp__) tool names beyond "Bash"/"Read", so the
+# tool-rollup panel's distinct-tool_name count exceeds HbarList's
+# DEFAULT_MAX_ROWS (8) - reproduces the 20-row over-cap case
+# 02-ui-overflow-fixes.md's review found live.
+EXTRA_TOOL_NAMES = [
+    "Write",
+    "Edit",
+    "MultiEdit",
+    "Glob",
+    "Grep",
+    "WebFetch",
+    "WebSearch",
+    "NotebookEdit",
+    "TodoWrite",
+    "BashOutput",
+    "KillShell",
+    "Task",
+    "ExitPlanMode",
+    "StrReplace",
+    "SlashCommand",
+    "ListMcpResources",
+    "ReadMcpResource",
+    "AgentOutputSchema",
+]
 
 
 def iso(dt: datetime) -> str:
@@ -73,6 +99,20 @@ def seed_db(project_root: Path, now: datetime) -> None:
             timestamp=iso(now - timedelta(hours=1, minutes=20)),
             input_tokens=400,
             output_tokens=300,
+        ),
+        # Latest call chronologically in SESSION_MAIN, so it lands at the
+        # end of the session's global ordering without shifting the
+        # positions the other tests assert against. Its long subagent name
+        # (SessionDrilldown.tsx's agent-row badge) exercises the
+        # 02-ui-overflow-fixes.md badge-wrap fix.
+        dict(
+            request_id="req-6",
+            session_id=SESSION_MAIN,
+            agent=LONG_SUBAGENT_NAME,
+            model="claude-sonnet-5",
+            timestamp=iso(now - timedelta(hours=1, minutes=10)),
+            input_tokens=250,
+            output_tokens=150,
         ),
         dict(
             request_id="req-5",
@@ -122,6 +162,22 @@ def seed_db(project_root: Path, now: datetime) -> None:
             timestamp=iso(now - timedelta(hours=1, minutes=19)),
         ),
     ]
+    # Appended after the above (so "Bash"/"Read" keep their earlier
+    # insertion order and stay among the tool-rollup panel's visible rows
+    # when HbarList's row cap ties on count=1) - pushes the panel's
+    # distinct plain tool_name count past DEFAULT_MAX_ROWS (8) to exercise
+    # the "+N more" indicator (02-ui-overflow-fixes.md).
+    for i, tool_name in enumerate(EXTRA_TOOL_NAMES):
+        tool_uses.append(
+            dict(
+                tool_use_id=f"tu-extra-{i}",
+                request_id="req-6",
+                session_id=SESSION_MAIN,
+                agent=LONG_SUBAGENT_NAME,
+                tool_name=tool_name,
+                timestamp=iso(now - timedelta(hours=1, minutes=9, seconds=i)),
+            )
+        )
     for tool_use in tool_uses:
         db.insert_tool_use(conn, **tool_use)
 

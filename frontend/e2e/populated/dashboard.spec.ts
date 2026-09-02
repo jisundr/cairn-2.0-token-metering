@@ -89,6 +89,61 @@ test.describe("populated dashboard", () => {
     await expect(drawer.getByTestId("trace-detail-response")).toContainText("Sure — adding a login page now.");
   });
 
+  test("wraps a long subagent name's badge onto its own line, without overflowing the name column", async ({
+    page,
+  }) => {
+    const row = page.getByTestId("agent-row-cairn:planner");
+    await expect(row).toBeVisible();
+
+    const nameBox = await row.getByText("cairn:planner").boundingBox();
+    const badgeBox = await row.getByText("subagent").boundingBox();
+    expect(nameBox).not.toBeNull();
+    expect(badgeBox).not.toBeNull();
+
+    // Wrapped onto its own line: the badge sits below the name, not beside
+    // it on the same line.
+    expect(badgeBox!.y).toBeGreaterThan(nameBox!.y);
+    // Neither element spills past the shared 110px name column into the
+    // token-bar column beside it.
+    const bar = page.getByTestId("agent-row-toggle-cairn:planner").locator("> div");
+    const barBox = await bar.boundingBox();
+    expect(barBox).not.toBeNull();
+    expect(nameBox!.x + nameBox!.width).toBeLessThanOrEqual(barBox!.x);
+    expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(barBox!.x);
+  });
+
+  test("main row (no badge) renders unchanged", async ({ page }) => {
+    const row = page.getByTestId("agent-row-main");
+    await expect(row).toBeVisible();
+    await expect(row.getByText("subagent")).toHaveCount(0);
+
+    const nameBox = await row.getByText("main", { exact: true }).boundingBox();
+    expect(nameBox).not.toBeNull();
+    // A single-child flex wrapper with no badge lays out identically to a
+    // plain span: exactly one line, no wrapping.
+    expect(nameBox!.height).toBeLessThan(20);
+  });
+
+  test("tool-rollup panel caps at maxRows with a '+N more' indicator when over-cap", async ({ page }) => {
+    const panel = page.getByTestId("tool-rollup");
+    await expect(panel).toBeVisible();
+
+    const rowCount = await panel.locator(":scope > div").count();
+    expect(rowCount).toBe(8);
+
+    const more = page.getByTestId("tool-rollup-more");
+    await expect(more).toBeVisible();
+    // 20 seeded distinct plain tool names (Bash, Read + 18 extras) - 8 visible = 12 hidden.
+    await expect(more).toHaveText("+12 more");
+  });
+
+  test("skill-rollup panel (under cap) shows no '+N more' indicator", async ({ page }) => {
+    const panel = page.getByTestId("skill-rollup");
+    await expect(panel).toBeVisible();
+    await expect(panel).toContainText("commit-msg-lint");
+    await expect(page.getByTestId("skill-rollup-more")).toHaveCount(0);
+  });
+
   test("opens the trace drawer with an unavailable transcript for a call with no transcript entry", async ({
     page,
   }) => {
