@@ -1,12 +1,24 @@
 import { type ReactNode, useState } from "react";
 import { useSessionTrace } from "../api/hooks";
 import type { AgentTrace, SessionSummary } from "../api/types";
-import { formatCost, formatDuration, formatStarted, formatTimeOfDay, formatTokens } from "../lib/format";
+import { formatCost, formatDuration, formatTimeOfDay, formatTokens } from "../lib/format";
 
 interface SessionDrilldownProps {
   session: SessionSummary;
   project?: string;
   onOpenCall: (sessionId: string, position: number) => void;
+}
+
+// Session-total runtime, not a per-call duration - mm:ss/h:mm reads better
+// than formatDuration's decimal-seconds form (built for the ~seconds-long
+// call rows below) once a session runs to minutes or hours.
+function formatSessionDuration(startIso: string, endIso: string): string {
+  const totalSeconds = Math.max(0, (new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${Math.round(totalSeconds)}s`;
 }
 
 // Per-agent expand/collapse rows, each with its call trace table
@@ -17,14 +29,20 @@ export function SessionDrilldown({ session, project, onOpenCall }: SessionDrilld
   if (!trace) return null;
 
   const maxTokens = Math.max(...trace.agents.map((a) => a.tokens), 1);
+  const totalTokens = trace.agents.reduce((sum, a) => sum + a.tokens, 0);
+  // Auto-expanded by default so the panel shows something useful without a
+  // click; the token-dominant agent is where session cost is concentrated,
+  // so it's the one worth seeing first.
+  const dominantAgent = trace.agents.reduce((best, a) => (a.tokens > best.tokens ? a : best), trace.agents[0]);
+  const dominantShare = totalTokens > 0 ? Math.round(((dominantAgent?.tokens ?? 0) / totalTokens) * 100) : 0;
 
   return (
     <div className="rounded-lg border border-(--block-line) bg-white" data-testid="session-drilldown">
       <div className="flex flex-wrap items-baseline gap-2.5 rounded-t-md border-b border-(--block-line) bg-(--block) px-4.5 py-3.5">
         <span className="font-label text-[13px] font-bold">Session {session.session_id}</span>
         <span className="font-label text-[11.5px] text-(--ink-soft)">
-          {formatStarted(trace.started)}–{formatStarted(trace.ended).split(" ")[1]} · {trace.agents.length} agents ·{" "}
-          {formatTokens(session.tokens)} tokens · {formatCost(session.cost)}
+          {formatSessionDuration(trace.started, trace.ended)} runtime
+          {dominantAgent && ` · ${dominantAgent.agent ?? "unknown"} dominant (${dominantShare}% of tokens)`}
         </span>
       </div>
 
@@ -35,6 +53,7 @@ export function SessionDrilldown({ session, project, onOpenCall }: SessionDrilld
           maxTokens={maxTokens}
           sessionId={session.session_id}
           onOpenCall={onOpenCall}
+          defaultOpen={agent.agent === dominantAgent?.agent}
         />
       ))}
     </div>
@@ -46,13 +65,15 @@ function AgentRow({
   maxTokens,
   sessionId,
   onOpenCall,
+  defaultOpen,
 }: {
   agent: AgentTrace;
   maxTokens: number;
   sessionId: string;
   onOpenCall: (sessionId: string, position: number) => void;
+  defaultOpen: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const name = agent.agent ?? "unknown";
   const isSubagent = name !== "main";
 

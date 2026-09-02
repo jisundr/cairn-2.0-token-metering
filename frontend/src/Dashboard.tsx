@@ -10,6 +10,7 @@ import {
   useToolRollup,
   useUsageLimitEvents,
 } from "./api/hooks";
+import type { RangeKey } from "./api/types";
 import { ActivityHeatmap } from "./components/ActivityHeatmap";
 import { EmptyState } from "./components/EmptyState";
 import { HbarGroupLabel, HbarList } from "./components/HbarList";
@@ -24,6 +25,7 @@ import { WarningBanner } from "./components/WarningBanner";
 import { formatTokens } from "./lib/format";
 
 const HBAR_RANGE = "7d" as const;
+const DEFAULT_SESSIONS_RANGE: RangeKey = "30d";
 
 interface DashboardProps {
   onOpenCall: (sessionId: string, position: number) => void;
@@ -34,13 +36,14 @@ interface DashboardProps {
 
 export function Dashboard({ onOpenCall, drawerCall, onCloseDrawer, onViewFullPage }: DashboardProps) {
   const [projectFilter, setProjectFilter] = useState("all");
+  const [sessionsRange, setSessionsRange] = useState<RangeKey>(DEFAULT_SESSIONS_RANGE);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const projectParam = projectFilter === "all" ? undefined : projectFilter;
 
   const projects = useProjects();
-  const sessions = useSessions({ range: "life", project: projectParam });
+  const sessions = useSessions({ range: sessionsRange, project: projectParam });
   const usageLimitEvents = useUsageLimitEvents({ range: "7d", project: projectParam });
   const agentRollup = useAgentRollup({ range: HBAR_RANGE, project: projectParam });
   const skillRollup = useSkillRollup({ range: HBAR_RANGE, project: projectParam });
@@ -156,6 +159,8 @@ export function Dashboard({ onOpenCall, drawerCall, onCloseDrawer, onViewFullPag
             projectFilter={projectFilter}
             onProjectFilterChange={setProjectFilter}
             projectLabels={(projects.data ?? []).map((p) => p.label)}
+            sessionsRange={sessionsRange}
+            onSessionsRangeChange={setSessionsRange}
           />
 
           {selectedSession && (
