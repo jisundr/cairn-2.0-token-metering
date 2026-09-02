@@ -122,6 +122,28 @@ def test_connect_is_idempotent_across_calls(tmp_path):
     row = conn2.execute("SELECT request_id FROM calls").fetchone()
     assert row == ("req-1",)
 
+    indexes = [
+        row[0]
+        for row in conn2.execute("SELECT name FROM sqlite_master WHERE type='index'")
+    ]
+    assert indexes.count("idx_calls_session_id") == 1
+    assert indexes.count("idx_calls_timestamp_trunc") == 1
+    assert indexes.count("idx_tool_uses_session_id") == 1
+    assert indexes.count("idx_usage_limit_events_session_id") == 1
+
+
+def test_connect_creates_expected_indexes(tmp_path):
+    conn = db.connect(tmp_path / ".cairn")
+
+    indexes = {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")
+    }
+    assert "idx_calls_session_id" in indexes
+    assert "idx_calls_timestamp_trunc" in indexes
+    assert "idx_tool_uses_session_id" in indexes
+    assert "idx_usage_limit_events_session_id" in indexes
+
 
 def test_insert_tool_use_round_trips_fields(tmp_path):
     conn = db.connect(tmp_path / ".cairn")

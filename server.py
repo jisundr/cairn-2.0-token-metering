@@ -608,6 +608,27 @@ class TokenMeteringApp:
     def _fetch_calls(self, projects, since=None, until=None) -> list[dict]:
         return self._fetch_table(projects, "calls", since=since, until=until)
 
+    def _fetch_session_calls(self, projects: list[Project], session_id: str) -> list[dict]:
+        """Every call for `session_id` across `projects`, without scanning the
+        full `calls` table. `calls.session_id` has no cross-project uniqueness
+        guarantee ruled out elsewhere in this class, so this still filters in
+        Python after fetching - the win is querying SQL by `session_id`
+        directly (indexed, per `db.py`) instead of by unbounded time range.
+        """
+        rows = []
+        for project in projects:
+            conn = _open_readonly(project.db_path, "calls")
+            if conn is None:
+                continue
+            try:
+                for row in conn.execute("SELECT * FROM calls WHERE session_id = ?", (session_id,)):
+                    record = dict(row)
+                    record["project"] = project.label
+                    rows.append(record)
+            finally:
+                conn.close()
+        return rows
+
     def _fetch_tool_uses(self, projects, since=None, until=None) -> list[dict]:
         return self._fetch_table(projects, "tool_uses", since=since, until=until)
 
@@ -705,12 +726,12 @@ class TokenMeteringApp:
 
     def session_trace(self, session_id: str, project_filter: str | None = None) -> dict | None:
         projects = _filter_projects(self.projects(), project_filter)
-        calls = [r for r in self._fetch_calls(projects) if r["session_id"] == session_id]
+        calls = self._fetch_session_calls(projects, session_id)
         return build_session_trace(session_id, calls)
 
     def call_detail(self, session_id: str, n: int, project_filter: str | None = None) -> dict | None:
         projects = _filter_projects(self.projects(), project_filter)
-        calls = [r for r in self._fetch_calls(projects) if r["session_id"] == session_id]
+        calls = self._fetch_session_calls(projects, session_id)
         if not calls:
             return None
         calls.sort(key=lambda r: (r["timestamp"], r["request_id"]))

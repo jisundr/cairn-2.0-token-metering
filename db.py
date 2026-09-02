@@ -46,6 +46,13 @@ CREATE TABLE IF NOT EXISTS tool_uses (
 )
 """
 
+CALLS_SESSION_INDEX = "CREATE INDEX IF NOT EXISTS idx_calls_session_id ON calls (session_id)"
+CALLS_TIMESTAMP_INDEX = "CREATE INDEX IF NOT EXISTS idx_calls_timestamp_trunc ON calls (substr(timestamp, 1, 19))"
+TOOL_USES_SESSION_INDEX = "CREATE INDEX IF NOT EXISTS idx_tool_uses_session_id ON tool_uses (session_id)"
+USAGE_LIMIT_EVENTS_SESSION_INDEX = (
+    "CREATE INDEX IF NOT EXISTS idx_usage_limit_events_session_id ON usage_limit_events (session_id)"
+)
+
 
 def db_path(cairn_dir: Path) -> Path:
     return cairn_dir / DB_FILENAME
@@ -57,6 +64,10 @@ def connect(cairn_dir: Path) -> sqlite3.Connection:
     conn.execute(CALLS_SCHEMA)
     conn.execute(USAGE_LIMIT_EVENTS_SCHEMA)
     conn.execute(TOOL_USES_SCHEMA)
+    conn.execute(CALLS_SESSION_INDEX)
+    conn.execute(CALLS_TIMESTAMP_INDEX)
+    conn.execute(TOOL_USES_SESSION_INDEX)
+    conn.execute(USAGE_LIMIT_EVENTS_SESSION_INDEX)
     conn.commit()
     return conn
 

@@ -230,6 +230,64 @@ def test_session_trace_returns_none_for_unknown_session():
     assert server.build_session_trace("sess-missing", []) is None
 
 
+def test_fetch_session_calls_matches_unbounded_fetch_then_python_filter(tmp_path):
+    root = make_project(
+        tmp_path, "proj",
+        calls=[
+            make_call(request_id="r1", session_id="sess-1", timestamp="2026-08-27T14:00:00Z"),
+            make_call(request_id="r2", session_id="sess-1", timestamp="2026-08-27T14:05:00Z"),
+            make_call(request_id="r3", session_id="sess-2", timestamp="2026-08-27T14:10:00Z"),
+        ],
+    )
+    app = server.TokenMeteringApp(root)
+    projects = app.projects()
+
+    scoped = app._fetch_session_calls(projects, "sess-1")
+    unbounded_then_filtered = [r for r in app._fetch_calls(projects) if r["session_id"] == "sess-1"]
+
+    key = lambda rows: sorted(r["request_id"] for r in rows)  # noqa: E731
+    assert key(scoped) == key(unbounded_then_filtered) == ["r1", "r2"]
+
+
+def test_session_trace_and_call_detail_use_the_scoped_fetch_and_agree_with_before(tmp_path):
+    root = make_project(
+        tmp_path, "proj",
+        calls=[
+            make_call(request_id="r1", session_id="sess-1", timestamp="2026-08-27T14:00:00Z"),
+            make_call(request_id="r2", session_id="sess-1", timestamp="2026-08-27T14:05:00Z"),
+            make_call(request_id="r3", session_id="sess-2", timestamp="2026-08-27T14:10:00Z"),
+        ],
+    )
+    app = server.TokenMeteringApp(root)
+
+    trace = app.session_trace("sess-1")
+    assert trace is not None
+    all_request_ids = {c["request_id"] for agent in trace["agents"] for c in agent["trace"]}
+    assert all_request_ids == {"r1", "r2"}
+
+    detail = app.call_detail("sess-1", 1)
+    assert detail["request_id"] == "r1"
+    detail2 = app.call_detail("sess-1", 2)
+    assert detail2["request_id"] == "r2"
+
+
+def test_calls_session_id_query_uses_the_index(tmp_path):
+    root = make_project(
+        tmp_path, "proj",
+        calls=[make_call(request_id="r1", session_id="sess-1")],
+    )
+    conn = server._open_readonly(root / ".cairn" / db.DB_FILENAME, "calls")
+    try:
+        plan = conn.execute(
+            "EXPLAIN QUERY PLAN SELECT * FROM calls WHERE session_id = ?", ("sess-1",)
+        ).fetchall()
+    finally:
+        conn.close()
+
+    plan_text = " ".join(str(cell) for row in plan for cell in row)
+    assert "idx_calls_session_id" in plan_text
+
+
 # --------------------------------------------------------------------------
 # Unpriced-model null propagation
 # --------------------------------------------------------------------------
