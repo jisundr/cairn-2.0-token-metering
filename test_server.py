@@ -294,6 +294,82 @@ def test_discover_projects_disambiguates_colliding_last_segment_labels(tmp_path)
     assert labels == {"org1/backend", "org2/backend"}
 
 
+def test_discover_projects_includes_an_existing_directory_entry(tmp_path):
+    local_root = tmp_path / "local"
+    local_root.mkdir()
+    other_root = tmp_path / "other"
+    other_root.mkdir()
+
+    known_projects_path = tmp_path / "known-projects.json"
+    known_projects_path.write_text(json.dumps([str(other_root)]))
+
+    projects = server.discover_projects(local_root, known_projects_path)
+
+    assert {p.root for p in projects} == {local_root.resolve(), other_root.resolve()}
+
+
+def test_discover_projects_excludes_a_nonexistent_path_without_raising(tmp_path):
+    local_root = tmp_path / "local"
+    local_root.mkdir()
+    ghost_root = tmp_path / "torn-down-worktree"
+
+    known_projects_path = tmp_path / "known-projects.json"
+    known_projects_path.write_text(json.dumps([str(ghost_root)]))
+
+    projects = server.discover_projects(local_root, known_projects_path)
+
+    assert {p.root for p in projects} == {local_root.resolve()}
+
+
+def test_discover_projects_excludes_a_path_that_is_a_file_not_a_directory(tmp_path):
+    local_root = tmp_path / "local"
+    local_root.mkdir()
+    clobbered_root = tmp_path / "clobbered"
+    clobbered_root.write_text("not a directory")
+
+    known_projects_path = tmp_path / "known-projects.json"
+    known_projects_path.write_text(json.dumps([str(clobbered_root)]))
+
+    projects = server.discover_projects(local_root, known_projects_path)
+
+    assert {p.root for p in projects} == {local_root.resolve()}
+
+
+def test_discover_projects_prunes_ghosts_from_a_mixed_list_preserving_order(tmp_path):
+    local_root = tmp_path / "local"
+    local_root.mkdir()
+    alive_1 = tmp_path / "alive-1"
+    alive_2 = tmp_path / "alive-2"
+    alive_1.mkdir()
+    alive_2.mkdir()
+    ghost = tmp_path / "ghost"
+
+    known_projects_path = tmp_path / "known-projects.json"
+    known_projects_path.write_text(json.dumps([str(alive_1), str(ghost), str(alive_2)]))
+
+    projects = server.discover_projects(local_root, known_projects_path)
+
+    other_roots = [p.root for p in projects if p.root != local_root.resolve()]
+    assert other_roots == [alive_1.resolve(), alive_2.resolve()]
+
+
+def test_discover_projects_never_rewrites_known_projects_file(tmp_path):
+    local_root = tmp_path / "local"
+    local_root.mkdir()
+    alive_root = tmp_path / "alive"
+    alive_root.mkdir()
+    ghost_root = tmp_path / "ghost"
+
+    known_projects_path = tmp_path / "known-projects.json"
+    known_projects_path.write_text(json.dumps([str(alive_root), str(ghost_root)]))
+    before = known_projects_path.read_bytes()
+
+    server.discover_projects(local_root, known_projects_path)
+
+    after = known_projects_path.read_bytes()
+    assert after == before
+
+
 def test_call_detail_resolves_the_correct_project_when_labels_collide(tmp_path):
     org1_dir = tmp_path / "org1"
     org2_dir = tmp_path / "org2"

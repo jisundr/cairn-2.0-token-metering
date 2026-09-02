@@ -121,6 +121,12 @@ def discover_projects(local_root: Path, known_projects_path: Path | None = None)
                     other_root = Path(entry).resolve()
                     if other_root in seen:
                         continue
+                    try:
+                        other_root_is_dir = other_root.is_dir()
+                    except OSError:
+                        other_root_is_dir = False
+                    if not other_root_is_dir:
+                        continue
                     seen.add(other_root)
                     roots.append(other_root)
 
