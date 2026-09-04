@@ -2,21 +2,22 @@ import type { HeatmapRow } from "../api/types";
 import { cn } from "../lib/utils";
 
 const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+// Ink-scale intensity, low to high (DESIGN.md's Ink-Scale Data Rule reserves
+// --ch1-4 for genuine multi-series data, not a single-series intensity
+// ramp) - four named tokens, so four buckets, not the prior five.
 const LEVEL_CLASSES = [
-  "border border-(--paper-line) bg-(--paper)",
-  "bg-[#d7e0ea]",
-  "bg-[#a9c0d6]",
-  "bg-[#6f93b5]",
-  "bg-(--blue)",
+  "border border-(--paper-line) bg-(--bone-dim)",
+  "bg-(--ink-faint)",
+  "bg-(--ink-soft)",
+  "bg-(--ink)",
 ];
 
 function levelFor(tokens: number, max: number): number {
   if (tokens === 0 || max === 0) return 0;
   const ratio = tokens / max;
-  if (ratio <= 0.25) return 1;
-  if (ratio <= 0.5) return 2;
-  if (ratio <= 0.75) return 3;
-  return 4;
+  if (ratio <= 1 / 3) return 1;
+  if (ratio <= 2 / 3) return 2;
+  return 3;
 }
 
 // getDay() is Sunday=0..Saturday=6; DOW_LABELS (and the grid below) are
