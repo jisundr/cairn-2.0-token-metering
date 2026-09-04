@@ -10,8 +10,8 @@ export function Button({ className, variant = "pill", ...props }: ButtonProps) {
     <button
       type="button"
       className={cn(
-        "font-label inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-(--block-line) px-3 py-1.5 text-[11.5px] text-(--ink-soft) transition-colors",
-        variant === "pill" && "bg-(--block) hover:bg-(--block-line)",
+        "font-label inline-flex cursor-pointer items-center gap-1.5 rounded-[3px] border border-(--paper-line) px-2.5 py-1 text-[11.5px] font-semibold tracking-[.05em] text-(--ink-soft) uppercase transition-colors",
+        variant === "pill" && "bg-(--window) hover:bg-(--block)",
         variant === "ghost" && "border-transparent bg-transparent hover:bg-(--block)",
         className,
       )}

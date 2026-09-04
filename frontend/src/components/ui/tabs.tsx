@@ -25,11 +25,11 @@ export function Tabs<T extends string>({ options, value, onChange, ...rest }: Ta
           aria-pressed={value === opt.value}
           onClick={() => onChange(opt.value)}
           className={cn(
-            "cursor-pointer border border-(--block-line) px-2.5 py-1.5 tracking-wide text-(--ink-soft) uppercase select-none",
+            "cursor-pointer border border-(--paper-line) px-2.5 py-1.5 font-bold tracking-wide text-(--ink-soft) uppercase select-none",
             i > 0 && "border-l-0",
-            i === 0 && "rounded-l-md",
-            i === options.length - 1 && "rounded-r-md",
-            value === opt.value && "relative z-1 border-(--blue) bg-white font-bold text-(--ink)",
+            i === 0 && "rounded-l-[3px]",
+            i === options.length - 1 && "rounded-r-[3px]",
+            value === opt.value && "relative z-1 bg-(--signal) text-(--window)",
           )}
         >
           {opt.label}
