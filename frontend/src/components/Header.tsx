@@ -34,7 +34,10 @@ export function Header({ lastUpdated, onRefresh }: HeaderProps) {
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-2.5">
-          <div className="h-7 w-7 flex-none rounded-md border-2 border-(--ink)" />
+          <div
+            className="relative h-6.5 w-6.5 flex-none rounded-[3px] border-2 border-(--ink) before:absolute before:inset-y-[5px] before:left-1/2 before:w-0.5 before:-translate-x-1/2 before:bg-(--ink) before:content-[''] after:absolute after:inset-x-[5px] after:top-1/2 after:h-0.5 after:-translate-y-1/2 after:bg-(--ink) after:content-['']"
+            aria-hidden="true"
+          />
           <div>
             <h2 className="m-0 text-[19px] font-bold tracking-tight">Token Metering</h2>
             <span className="font-label block text-[11px] tracking-wide text-(--ink-soft) uppercase">

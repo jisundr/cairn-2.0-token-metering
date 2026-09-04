@@ -85,7 +85,10 @@ export function Dashboard({ onOpenCall, drawerCall, onCloseDrawer, onViewFullPag
   }
 
   return (
-    <div className="mx-auto max-w-[1180px] px-7 py-6.5" data-testid="dashboard">
+    <div
+      className="mx-auto max-w-[1180px] rounded-[6px] border border-(--paper-line) bg-(--window) px-7 py-6.5 shadow-[0_1px_0_var(--paper-line-soft)]"
+      data-testid="dashboard"
+    >
       <Header lastUpdated={lastUpdated} onRefresh={handleRefresh} />
 
       {isColdStart ? (
@@ -102,7 +105,7 @@ export function Dashboard({ onOpenCall, drawerCall, onCloseDrawer, onViewFullPag
             />
             <MeterBox
               label="Cost today"
-              value={formatCost(todayTimeseries.data?.total_cost ?? 0)}
+              value={todayTimeseries.data ? formatCost(todayTimeseries.data.total_cost) : formatCost(0)}
               testId="meter-cost-today"
             />
             <MeterBox
