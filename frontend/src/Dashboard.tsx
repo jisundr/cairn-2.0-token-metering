@@ -7,6 +7,7 @@ import {
   useProjects,
   useSessions,
   useSkillRollup,
+  useTimeseries,
   useToolRollup,
   useUsageLimitEvents,
 } from "./api/hooks";
@@ -22,7 +23,7 @@ import { TraceDrawer } from "./components/TraceDrawer";
 import { Panel, PanelTitle } from "./components/ui/panel";
 import { TokensPerDayPanel } from "./components/TokensPerDayPanel";
 import { WarningBanner } from "./components/WarningBanner";
-import { formatTokens } from "./lib/format";
+import { formatCost, formatTokens } from "./lib/format";
 
 const HBAR_RANGE = "7d" as const;
 const DEFAULT_SESSIONS_RANGE: RangeKey = "30d";
@@ -45,6 +46,8 @@ export function Dashboard({ onOpenCall, drawerCall, onCloseDrawer, onViewFullPag
   const projects = useProjects();
   const sessions = useSessions({ range: sessionsRange, project: projectParam });
   const usageLimitEvents = useUsageLimitEvents({ range: "7d", project: projectParam });
+  const todayTimeseries = useTimeseries({ range: "today", project: projectParam });
+  const sevenDayTimeseries = useTimeseries({ range: "7d", project: projectParam });
   const agentRollup = useAgentRollup({ range: HBAR_RANGE, project: projectParam });
   const skillRollup = useSkillRollup({ range: HBAR_RANGE, project: projectParam });
   const modelRollup = useModelRollup({ range: HBAR_RANGE, project: projectParam });
@@ -90,6 +93,24 @@ export function Dashboard({ onOpenCall, drawerCall, onCloseDrawer, onViewFullPag
       ) : (
         <>
           <WarningBanner events={usageLimitEvents.data ?? []} onViewSession={setSelectedSessionId} />
+
+          <div className="mb-4.5 flex flex-wrap gap-3" data-testid="meter-row">
+            <MeterBox
+              label="Tokens today"
+              value={formatTokens(todayTimeseries.data?.total_tokens ?? 0)}
+              testId="meter-tokens-today"
+            />
+            <MeterBox
+              label="Cost today"
+              value={formatCost(todayTimeseries.data?.total_cost ?? 0)}
+              testId="meter-cost-today"
+            />
+            <MeterBox
+              label="Tokens 7D"
+              value={formatTokens(sevenDayTimeseries.data?.total_tokens ?? 0)}
+              testId="meter-tokens-7d"
+            />
+          </div>
 
           <div className="mb-5.5 grid grid-cols-1 gap-4.5 lg:grid-cols-[1.3fr_1fr]">
             <TokensPerDayPanel project={projectParam} />
@@ -178,6 +199,23 @@ export function Dashboard({ onOpenCall, drawerCall, onCloseDrawer, onViewFullPag
           onViewFullPage={onViewFullPage}
         />
       )}
+    </div>
+  );
+}
+
+// Top-of-page instrument readout (DESIGN.md's Meter Boxes): a bordered
+// --window box with a 2px --paper-line-soft top hairline, label-face caption
+// over a large tabular-mono value. Read-only — no hover/interactive state.
+function MeterBox({ label, value, testId }: { label: string; value: string; testId: string }) {
+  return (
+    <div
+      data-testid={testId}
+      className="relative flex-1 basis-[170px] overflow-hidden rounded-[4px] border border-(--paper-line) bg-(--window) px-4 py-3 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-(--paper-line-soft)"
+    >
+      <span className="font-label block text-[11px] font-semibold tracking-[.08em] text-(--ink-soft) uppercase">
+        {label}
+      </span>
+      <span className="font-mono block text-[27px] font-semibold tabular-nums text-(--ink)">{value}</span>
     </div>
   );
 }
