@@ -21,7 +21,7 @@ export function Header({ lastUpdated, onRefresh }: HeaderProps) {
           static mono URL readout, per DESIGN.md's Layout section. Decorative
           only; the URL text sources from the page's own origin rather than a
           hardcoded placeholder. */}
-      <div className="mb-4 flex items-center gap-3.5 rounded-t-[5px] border-b border-(--paper-line) bg-(--bone-dim) px-3.5 py-2.5">
+      <div className="-mx-7 -mt-6.5 mb-4 flex items-center gap-3.5 rounded-t-[5px] border-b border-(--paper-line) bg-(--bone-dim) px-3.5 py-2.5">
         <div className="flex flex-none gap-1.5" aria-hidden="true">
           <span className="h-1.75 w-1.75 rounded-full bg-(--ink-faint) opacity-55" />
           <span className="h-1.75 w-1.75 rounded-full bg-(--ink-faint) opacity-55" />
