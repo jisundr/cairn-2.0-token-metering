@@ -62,6 +62,11 @@ test.describe("populated dashboard", () => {
   test("tokens/day range tabs swap chart shape", async ({ page }) => {
     // Default range is 7d - daily click-through bars.
     await expect(page.getByTestId("chart-daily-click")).toBeVisible();
+    // The calibrated-trace overlay (graticule background + SVG polyline
+    // through each bar's top) renders inside the bar chart itself.
+    const trace = page.getByTestId("chart-daily-click").getByTestId("trace-overlay");
+    await expect(trace).toBeVisible();
+    await expect(trace.locator("polyline")).toHaveCount(1);
 
     await page.getByTestId("range-tabs-today").click();
     await expect(page.getByTestId("chart-hourly")).toBeVisible();
