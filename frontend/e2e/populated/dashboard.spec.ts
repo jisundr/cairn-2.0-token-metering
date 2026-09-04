@@ -39,11 +39,11 @@ test.describe("populated dashboard", () => {
     await page.goto("/");
     await expect(page.getByTestId("dashboard")).toBeVisible();
     await expect.poll(() => lastRangeParam).toBe("30d");
-    await expect(page.getByTestId("sessions-range-30d")).toHaveClass(/border-\(--blue\)/);
+    await expect(page.getByTestId("sessions-range-30d")).toHaveClass(/bg-\(--signal\)/);
 
     await page.getByTestId("sessions-range-life").click();
     await expect.poll(() => lastRangeParam).toBe("life");
-    await expect(page.getByTestId("sessions-range-life")).toHaveClass(/border-\(--blue\)/);
+    await expect(page.getByTestId("sessions-range-life")).toHaveClass(/bg-\(--signal\)/);
   });
 
   test("sessions table sits in a bounded, scrollable container", async ({ page }) => {

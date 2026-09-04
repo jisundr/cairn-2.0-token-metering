@@ -67,9 +67,9 @@ export function SessionsTable({
         </div>
       )}
 
-      <div className="max-h-[420px] overflow-y-auto rounded-md border border-(--paper-line)">
+      <div className="max-h-[420px] overflow-y-auto rounded-[4px] border border-(--paper-line)">
         <table className="w-full border-collapse text-[13px]" data-testid="sessions-table">
-          <thead className="sticky top-0 z-10 bg-white">
+          <thead className="sticky top-0 z-10 bg-(--window)">
             <tr>
               <Th>Started</Th>
               <Th>Session</Th>
@@ -80,27 +80,31 @@ export function SessionsTable({
             </tr>
           </thead>
           <tbody>
-            {visible.map((s) => (
-              <tr
-                key={`${s.project}-${s.session_id}`}
-                data-testid={`session-row-${s.session_id}`}
-                onClick={() => onSelect(s.session_id)}
-                className={cn(
-                  "cursor-pointer border-b border-dashed border-(--paper-line)",
-                  selectedSessionId === s.session_id && "bg-(--blue-soft)",
-                )}
-              >
-                <Td>{formatStarted(s.started)}</Td>
-                <Td>
-                  {s.usage_limit_hit && <span className="mr-1.5 inline-block h-1.75 w-1.75 rounded-full bg-(--flag)" />}
-                  {s.session_id}
-                </Td>
-                {multiProject && <Td>{s.project}</Td>}
-                <Td>{s.agents.length}</Td>
-                <Td>{s.tokens.toLocaleString()}</Td>
-                <Td>{formatCost(s.cost)}</Td>
-              </tr>
-            ))}
+            {visible.map((s) => {
+              const selected = selectedSessionId === s.session_id;
+              return (
+                <tr
+                  key={`${s.project}-${s.session_id}`}
+                  data-testid={`session-row-${s.session_id}`}
+                  onClick={() => onSelect(s.session_id)}
+                  className={cn(
+                    "cursor-pointer border-b border-dashed border-(--paper-line)",
+                    selected && "bg-(--signal-soft)",
+                  )}
+                >
+                  <Td mono>{formatStarted(s.started)}</Td>
+                  <Td>
+                    {selected && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-[1px] bg-(--signal)" />}
+                    {s.usage_limit_hit && <span className="mr-1.5 inline-block h-1.75 w-1.75 rounded-full bg-(--signal)" />}
+                    {s.session_id}
+                  </Td>
+                  {multiProject && <Td>{s.project}</Td>}
+                  <Td mono>{s.agents.length}</Td>
+                  <Td mono>{s.tokens.toLocaleString()}</Td>
+                  <Td mono>{formatCost(s.cost)}</Td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -125,8 +129,8 @@ function FilterPill({
       onClick={onClick}
       data-testid={testId ?? `project-filter-${label}`}
       className={cn(
-        "font-label cursor-pointer rounded-full border border-(--block-line) px-3 py-1 text-[10.5px] tracking-wide text-(--ink-soft) uppercase select-none",
-        active && "border-(--blue) bg-(--blue-soft) font-bold text-(--blue)",
+        "font-label cursor-pointer rounded-[3px] border border-(--paper-line) bg-(--window) px-3 py-1 text-[10.5px] tracking-wide text-(--ink-soft) uppercase select-none",
+        active && "border-(--signal) bg-(--signal) font-bold text-(--window)",
       )}
     >
       {label}
@@ -136,12 +140,12 @@ function FilterPill({
 
 function Th({ children }: { children: ReactNode }) {
   return (
-    <th className="font-label border-b border-(--block-line) px-2.5 pb-2 text-left text-[10.5px] font-normal tracking-wide text-(--ink-soft) uppercase">
+    <th className="font-label border-b border-(--paper-line) px-2.5 pb-2 text-left text-[10.5px] font-normal tracking-wide text-(--ink-soft) uppercase">
       {children}
     </th>
   );
 }
 
-function Td({ children }: { children: ReactNode }) {
-  return <td className="px-2.5 py-2.25 tabular-nums">{children}</td>;
+function Td({ children, mono }: { children: ReactNode; mono?: boolean }) {
+  return <td className={cn("px-2.5 py-2.25 tabular-nums", mono && "font-mono")}>{children}</td>;
 }

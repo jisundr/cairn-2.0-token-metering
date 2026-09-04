@@ -34,13 +34,10 @@ export function HbarList({
       {visible.map((row) => (
         <div key={row.label} className="grid grid-cols-[minmax(76px,auto)_1fr_54px] items-center gap-2.5">
           <span className="font-label text-[11.5px] text-(--ink)">{row.label}</span>
-          <div className="h-3 overflow-hidden rounded-[3px] border border-(--paper-line) bg-(--paper)">
-            <div
-              className="h-full border-r border-(--block-line) bg-(--block)"
-              style={{ width: `${(row.value / max) * 100}%` }}
-            />
+          <div className="h-2.5 overflow-hidden rounded-[2px] border border-(--paper-line) bg-(--bone-dim)">
+            <div className="h-full bg-(--ink-soft)" style={{ width: `${(row.value / max) * 100}%` }} />
           </div>
-          <span className="font-label text-right text-[10.5px] text-(--ink-soft)">{row.display}</span>
+          <span className="font-mono text-right text-[10.5px] text-(--ink-soft)">{row.display}</span>
         </div>
       ))}
       {hiddenCount > 0 && (
@@ -54,7 +51,7 @@ export function HbarList({
 
 export function HbarGroupLabel({ children }: { children: string }) {
   return (
-    <p className="font-label mt-3.5 mb-2 text-[10px] tracking-wide text-(--graphite) uppercase first:mt-0">
+    <p className="font-label mt-3.5 mb-2 text-[10px] tracking-wide text-(--ink-soft) uppercase first:mt-0">
       {children}
     </p>
   );
