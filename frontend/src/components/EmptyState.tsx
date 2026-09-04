@@ -6,14 +6,15 @@ export function EmptyState() {
   return (
     <div
       data-testid="empty-state"
-      className="mx-auto my-8 max-w-[460px] rounded-xl border-[1.5px] border-dashed border-(--block-line) bg-(--paper) px-7.5 py-8.5 text-center"
+      className="mx-auto my-8 max-w-[460px] rounded-xl border-[1.5px] border-dashed border-(--paper-line) bg-(--window) px-7.5 py-8.5 text-center"
     >
-      <div className="font-label mx-auto mb-4 flex h-11.5 w-11.5 items-center justify-center rounded-full border-[1.5px] border-dashed border-(--graphite) text-lg text-(--ink-soft)">
+      <div className="font-mono mx-auto mb-4 flex h-11.5 w-11.5 items-center justify-center rounded-full border-[1.5px] border-dashed border-(--paper-line) text-lg text-(--ink-soft)">
         ∅
       </div>
       <h3 className="m-0 mb-2 text-base font-semibold">No sessions captured yet</h3>
       <p className="m-0 mb-5.5 text-[13px] leading-normal text-(--ink-soft)">
-        Looking for <code className="rounded bg-(--block) px-1 py-0.5">.cairn/tokens.db</code> — it's empty or
+        Looking for{" "}
+        <code className="font-mono rounded bg-(--block) px-1 py-0.5">.cairn/tokens.db</code> — it's empty or
         doesn't exist yet in this project.
       </p>
       <div className="mb-5.5 flex flex-col gap-2.5 text-left">
@@ -31,7 +32,7 @@ export function EmptyState() {
 function EmptyStep({ n, text }: { n: number; text: string }) {
   return (
     <div className="flex items-start gap-2.5 text-[12.5px]">
-      <span className="font-label flex h-4.5 w-4.5 flex-none items-center justify-center rounded-full border border-(--block-line) text-[10px] text-(--ink-soft)">
+      <span className="font-mono flex h-4.5 w-4.5 flex-none items-center justify-center rounded-full border border-(--paper-line) text-[10px] text-(--ink-soft)">
         {n}
       </span>
       {text}

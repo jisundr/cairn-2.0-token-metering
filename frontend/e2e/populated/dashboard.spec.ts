@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { formatCost, formatTokens } from "../../src/lib/format";
 
 // Against the "populated" webServer (fixtures/seed.py): a project with
 // calls/tool-uses/a usage-limit event across three agents on one session,
@@ -57,6 +58,25 @@ test.describe("populated dashboard", () => {
     await expect(banner).toContainText("e2e-session-main");
     await page.getByTestId("usage-limit-view-session").click();
     await expect(page.getByTestId("session-drilldown")).toContainText("e2e-session-main");
+  });
+
+  test("meter row shows today/cost/7d totals matching the seeded timeseries data", async ({ page }) => {
+    // Read the same endpoint the meter row's two new useTimeseries calls
+    // hit, independently of the app's own in-flight request, rather than
+    // hand-computing the seeded fixture's token/cost totals (fragile
+    // against pricing/rounding). Responses are enveloped as { data, meta }
+    // (client.ts's apiGet unwraps this at runtime).
+    const today = (await (await page.request.get("/api/rollup/timeseries?range=today")).json()).data;
+    const sevenDay = (await (await page.request.get("/api/rollup/timeseries?range=7d")).json()).data;
+
+    // Seeded fixture puts every call in the last 2 hours, so "today" is
+    // non-zero; the older second session (2 days back) only shows up once
+    // the range widens to 7d.
+    expect(today.total_tokens).toBeGreaterThan(0);
+
+    await expect(page.getByTestId("meter-tokens-today")).toContainText(formatTokens(today.total_tokens));
+    await expect(page.getByTestId("meter-cost-today")).toContainText(formatCost(today.total_cost));
+    await expect(page.getByTestId("meter-tokens-7d")).toContainText(formatTokens(sevenDay.total_tokens));
   });
 
   test("tokens/day range tabs swap chart shape", async ({ page }) => {
