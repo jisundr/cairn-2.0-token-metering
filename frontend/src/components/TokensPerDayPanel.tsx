@@ -158,7 +158,7 @@ export function TokensPerDayPanel({ project }: TokensPerDayPanelProps) {
               >
                 <div
                   className={cn(
-                    "relative w-full rounded-t-[3px] border border-t-2",
+                    "relative w-full rounded-t-[1px] border border-t-2",
                     selected
                       ? "border-(--signal) bg-(--signal-soft) border-t-(--signal)"
                       : "border-(--paper-line) bg-(--block) border-t-(--ink-faint)",
