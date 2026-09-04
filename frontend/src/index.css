@@ -1,18 +1,109 @@
 @import "tailwindcss";
 
 :root {
-  --paper: #eef0ee;
-  --paper-line: #d7dbd8;
-  --ink: #2a2d2c;
-  --ink-soft: #6b706e;
-  --graphite: #9aa19e;
-  --block: #dde1de;
-  --block-line: #b7bdb9;
-  --window: #ffffff;
-  --blue: #4f6f92;
-  --blue-soft: #e4eaf1;
-  --flag: #a94a3d;
-  --flag-soft: #f4e3e0;
+  --bone: #f1ebda;
+  --bone-dim: #e7ddc0;
+  --window: #f8f3e5;
+  --block: #e2d7b8;
+  --ink: #1a2233;
+  --ink-soft: #4e5871;
+  --ink-faint: #90939f;
+  --signal: #c1741c;
+  --signal-soft: #ecdcb6;
+  --signal-line: #a8631a;
+  --ch1: #1a2233;
+  --ch2: #5c6478;
+  --ch3: #838a9b;
+  --ch4: #aeb2bd;
+  --paper-line: rgba(23, 30, 44, 0.18);
+  --paper-line-soft: rgba(23, 30, 44, 0.09);
+}
+
+@font-face {
+  font-family: "Big Shoulders";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/BigShoulders-600.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Big Shoulders";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/BigShoulders-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/PublicSans-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/PublicSans-600.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/PublicSans-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Martian Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/MartianMono-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Martian Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/MartianMono-600.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Martian Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/MartianMono-700.woff2") format("woff2");
+}
+
+@theme {
+  --font-label: "Big Shoulders", "Arial Narrow", sans-serif;
+  --font-body: "Public Sans", -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Martian Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --color-bone: var(--bone);
+  --color-bone-dim: var(--bone-dim);
+  --color-window: var(--window);
+  --color-block: var(--block);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-signal: var(--signal);
+  --color-signal-soft: var(--signal-soft);
+  --color-signal-line: var(--signal-line);
+  --color-ch1: var(--ch1);
+  --color-ch2: var(--ch2);
+  --color-ch3: var(--ch3);
+  --color-ch4: var(--ch4);
+  --color-paper-line: var(--paper-line);
+  --color-paper-line-soft: var(--paper-line-soft);
 }
 
 html,
@@ -23,12 +114,8 @@ body,
 
 body {
   margin: 0;
-  background: var(--paper);
+  background: var(--bone);
   color: var(--ink);
   font-family:
-    "Archivo", -apple-system, "Segoe UI", sans-serif;
-}
-
-.font-label {
-  font-family: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    "Public Sans", -apple-system, "Segoe UI", sans-serif;
 }
