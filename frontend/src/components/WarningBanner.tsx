@@ -16,21 +16,21 @@ export function WarningBanner({ events, onViewSession }: WarningBannerProps) {
   return (
     <div
       data-testid="usage-limit-banner"
-      className="mb-5 flex items-center gap-3 rounded-lg border-[1.5px] border-dashed border-(--flag) bg-(--flag-soft) px-4 py-3 text-[13.5px]"
+      className="mb-5 flex items-center gap-3 rounded-lg border-[1.5px] border-dashed border-(--signal-line) bg-(--signal-soft) px-4 py-3 text-[13.5px]"
     >
-      <span className="font-label flex h-5 w-5 flex-none items-center justify-center rounded-full border-[1.5px] border-(--flag) text-xs text-(--flag)">
+      <span className="font-label flex h-5 w-5 flex-none items-center justify-center rounded-full border-[1.5px] border-(--signal-line) text-xs text-(--signal-line)">
         !
       </span>
       <span>
         <strong className="font-semibold">Usage limit hit</strong> {plural} — session{" "}
-        <code className="rounded bg-(--block) px-1 py-0.5">{mostRecent.session_id}</code>
+        <code className="font-mono rounded bg-(--block) px-1 py-0.5">{mostRecent.session_id}</code>
       </span>
       <Badge>{events.length}</Badge>
       <button
         type="button"
         data-testid="usage-limit-view-session"
         onClick={() => onViewSession(mostRecent.session_id)}
-        className="font-label ml-auto cursor-pointer border-none border-b border-(--flag) bg-transparent p-0 text-[12px] whitespace-nowrap text-(--flag)"
+        className="font-label ml-auto cursor-pointer border-none border-b border-(--signal-line) bg-transparent p-0 text-[12px] whitespace-nowrap text-(--signal-line)"
       >
         view session →
       </button>
