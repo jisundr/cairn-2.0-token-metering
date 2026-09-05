@@ -126,6 +126,34 @@ test.describe("populated dashboard", () => {
     await expect(trace.getByTestId("trace-row-e2e-session-main-1")).toBeVisible();
   });
 
+  test("drilldown renders an unpriced call's cost as 'unknown' without crashing", async ({ page }) => {
+    // e2e-session-other's one call is on "claude-haiku-4.5", which isn't a
+    // key in prices.json (only "claude-haiku-4-5-20251001" is priced) - so
+    // pricing.call_cost returns the string "unknown", not a number, for
+    // this call. formatCost must handle that sentinel without crashing
+    // (regression test for the `e.toFixed is not a function` bug).
+    const pageErrors: Error[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error));
+    const consoleErrors: string[] = [];
+    page.on("console", (msg) => {
+      if (msg.type() === "error") consoleErrors.push(msg.text());
+    });
+
+    await page.getByTestId("session-row-e2e-session-other").click();
+
+    const drilldown = page.getByTestId("session-drilldown");
+    await expect(drilldown).toBeVisible();
+    await expect(drilldown).toContainText("e2e-session-other");
+
+    // Only agent ("main") is auto-expanded as the token-dominant (only) agent.
+    const trace = page.getByTestId("agent-trace-main");
+    await expect(trace).toBeVisible();
+    await expect(trace.getByTestId("trace-row-e2e-session-other-1")).toContainText("unknown");
+
+    expect(pageErrors).toEqual([]);
+    expect(consoleErrors).toEqual([]);
+  });
+
   test("drilldown auto-expands the token-dominant agent and shows a non-duplicate summary", async ({ page }) => {
     const drilldown = page.getByTestId("session-drilldown");
     await expect(drilldown).toBeVisible();

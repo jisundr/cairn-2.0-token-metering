@@ -95,7 +95,7 @@ export interface TraceCall {
   cache_read_tokens: number;
   cache_write_5m_tokens: number;
   cache_write_1h_tokens: number;
-  cost: number | null;
+  cost: number | "unknown";
   duration_seconds: number | null;
 }
 
@@ -128,7 +128,7 @@ export interface CallDetail {
   cache_read_tokens: number;
   cache_write_5m_tokens: number;
   cache_write_1h_tokens: number;
-  cost: number | null;
+  cost: number | "unknown";
   available: boolean;
   prompt: string | null;
   response: string | null;

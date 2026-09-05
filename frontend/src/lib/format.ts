@@ -4,8 +4,8 @@ export function formatTokens(n: number): string {
   return String(n);
 }
 
-export function formatCost(cost: number | null): string {
-  if (cost === null) return "unknown";
+export function formatCost(cost: number | "unknown" | null): string {
+  if (cost === null || cost === "unknown") return "unknown";
   return `$${cost.toFixed(2)}`;
 }
 
