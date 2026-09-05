@@ -25,13 +25,13 @@ export function TraceDrawer({ sessionId, n, project, onClose, onViewFullPage }: 
         data-testid="trace-drawer-backdrop"
       />
       <aside
-        className="fixed inset-y-0 right-0 z-[21] flex w-full max-w-[400px] flex-col bg-white shadow-[-14px_0_34px_rgba(42,45,44,0.18)]"
+        className="fixed inset-y-0 right-0 z-[21] flex w-full max-w-[400px] flex-col border-l border-(--paper-line) bg-(--window)"
         data-testid="trace-drawer"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-(--block-line) bg-(--block) px-5 py-4.5">
+        <div className="flex items-start justify-between gap-3 border-b border-(--paper-line) bg-(--bone-dim) px-5 py-4.5">
           {call && (
             <div>
-              <span className="font-label block text-[13px] font-bold">Call #{call.position}</span>
+              <span className="block text-[13px] font-bold">Call #{call.position}</span>
               <span className="font-label mt-0.75 block text-[11px] text-(--ink-soft)">
                 {call.agent ?? "unknown"} · session {call.session_id} · {formatTimeOfDay(call.timestamp)} ·{" "}
                 {call.model}
@@ -43,7 +43,7 @@ export function TraceDrawer({ sessionId, n, project, onClose, onViewFullPage }: 
               type="button"
               onClick={onViewFullPage}
               data-testid="trace-drawer-fullpage-link"
-              className="font-label cursor-pointer border-0 border-b border-(--blue) bg-transparent p-0 text-[10.5px] whitespace-nowrap text-(--blue)"
+              className="font-label cursor-pointer border-0 border-b border-(--ink-soft) bg-transparent p-0 text-[10.5px] whitespace-nowrap text-(--ink-soft)"
             >
               view full page ↗
             </button>

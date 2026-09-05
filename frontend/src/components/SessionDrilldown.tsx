@@ -37,19 +37,20 @@ export function SessionDrilldown({ session, project, onOpenCall }: SessionDrilld
   const dominantShare = totalTokens > 0 ? Math.round(((dominantAgent?.tokens ?? 0) / totalTokens) * 100) : 0;
 
   return (
-    <div className="rounded-lg border border-(--block-line) bg-white" data-testid="session-drilldown">
-      <div className="flex flex-wrap items-baseline gap-2.5 rounded-t-md border-b border-(--block-line) bg-(--block) px-4.5 py-3.5">
-        <span className="font-label text-[13px] font-bold">Session {session.session_id}</span>
-        <span className="font-label text-[11.5px] text-(--ink-soft)">
+    <div className="rounded-[4px] border border-(--paper-line) bg-(--window)" data-testid="session-drilldown">
+      <div className="flex flex-wrap items-baseline gap-2.5 rounded-t-[3px] border-b border-(--paper-line) bg-(--bone-dim) px-4.5 py-3.5">
+        <span className="text-[13px] font-bold">Session {session.session_id}</span>
+        <span className="font-mono text-[11.5px] text-(--ink-soft)">
           {formatSessionDuration(trace.started, trace.ended)} runtime
           {dominantAgent && ` · ${dominantAgent.agent ?? "unknown"} dominant (${dominantShare}% of tokens)`}
         </span>
       </div>
 
-      {trace.agents.map((agent) => (
+      {trace.agents.map((agent, index) => (
         <AgentRow
           key={agent.agent ?? "unknown"}
           agent={agent}
+          index={index}
           maxTokens={maxTokens}
           sessionId={session.session_id}
           onOpenCall={onOpenCall}
@@ -60,14 +61,18 @@ export function SessionDrilldown({ session, project, onOpenCall }: SessionDrilld
   );
 }
 
+const CHANNEL_COLORS = ["var(--ch1)", "var(--ch2)", "var(--ch3)", "var(--ch4)"];
+
 function AgentRow({
   agent,
+  index,
   maxTokens,
   sessionId,
   onOpenCall,
   defaultOpen,
 }: {
   agent: AgentTrace;
+  index: number;
   maxTokens: number;
   sessionId: string;
   onOpenCall: (sessionId: string, position: number) => void;
@@ -76,6 +81,7 @@ function AgentRow({
   const [open, setOpen] = useState(defaultOpen);
   const name = agent.agent ?? "unknown";
   const isSubagent = name !== "main";
+  const channelColor = CHANNEL_COLORS[index % CHANNEL_COLORS.length];
 
   return (
     <div className="border-b border-(--paper-line) last:border-b-0" data-testid={`agent-row-${name}`}>
@@ -86,24 +92,25 @@ function AgentRow({
         aria-expanded={open}
         className={
           "grid w-full cursor-pointer grid-cols-[18px_110px_1fr_90px_90px_70px] items-center gap-3 border-0 px-4.5 py-3 text-left text-[13px] " +
-          (open ? "bg-(--blue-soft)" : "bg-transparent")
+          (open ? "bg-(--signal-soft)" : "bg-transparent")
         }
       >
-        <span className={"font-label text-[11px] " + (open ? "text-(--blue)" : "text-(--ink-soft)")}>
+        <span className={"font-label text-[11px] " + (open ? "text-(--signal)" : "text-(--ink-soft)")}>
           {open ? "▾" : "▸"}
         </span>
         <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold leading-tight">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: channelColor }} />
           <span className="truncate">{name}</span>
           {isSubagent && (
-            <span className="font-label shrink-0 rounded border border-(--block-line) px-1 py-0.5 text-[9.5px] lowercase text-(--ink-soft)">
+            <span className="font-label shrink-0 rounded-[3px] border border-(--paper-line) px-1 py-0.5 text-[9.5px] lowercase text-(--ink-faint)">
               subagent
             </span>
           )}
         </span>
-        <div className="h-2 overflow-hidden rounded-[2px] border border-(--paper-line) bg-(--paper)">
+        <div className="h-2 overflow-hidden rounded-[2px] border border-(--paper-line) bg-(--bone-dim)">
           <div
-            className="h-full bg-(--block-line)"
-            style={{ width: `${(agent.tokens / maxTokens) * 100}%` }}
+            className="h-full"
+            style={{ width: `${(agent.tokens / maxTokens) * 100}%`, backgroundColor: channelColor }}
           />
         </div>
         <span className="font-label text-right text-[11.5px] text-(--ink-soft) tabular-nums">
@@ -145,7 +152,7 @@ function AgentRow({
                       type="button"
                       onClick={() => onOpenCall(sessionId, call.global_position)}
                       data-testid={`trace-toggle-${sessionId}-${call.position}`}
-                      className="inline-flex h-4.75 w-4.75 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-dashed border-(--graphite) text-[10px] text-(--ink-soft) select-none"
+                      className="inline-flex h-4.75 w-4.75 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-dashed border-(--ink-faint) text-[10px] text-(--ink-soft) select-none"
                     >
                       ⋯
                     </button>
@@ -164,7 +171,7 @@ function TraceTh({ children, center }: { children: ReactNode; center?: boolean }
   return (
     <th
       className={
-        "border-b border-(--block-line) px-2 py-1.5 font-normal whitespace-nowrap text-(--ink-soft) " +
+        "border-b border-(--paper-line) px-2 py-1.5 font-normal whitespace-nowrap text-(--ink-soft) " +
         (center ? "text-center" : "text-right")
       }
     >
