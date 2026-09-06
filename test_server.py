@@ -44,7 +44,7 @@ def make_tool_use(**overrides):
     return tool_use
 
 
-def make_project(tmp_path, name="proj", calls=(), tool_uses=(), events=()):
+def make_project(tmp_path, name="proj", calls=(), tool_uses=(), events=(), labels=None):
     root = tmp_path / name
     root.mkdir()
     conn = db.connect(root / ".cairn")
@@ -54,6 +54,8 @@ def make_project(tmp_path, name="proj", calls=(), tool_uses=(), events=()):
         db.insert_tool_use(conn, **t)
     for e in events:
         db.insert_usage_limit_event(conn, **e)
+    for session_id, label in (labels or {}).items():
+        db.save_session_label(conn, session_id=session_id, label=label)
     conn.commit()
     conn.close()
     return root
@@ -277,6 +279,18 @@ def test_session_trace_orders_calls_and_groups_by_agent(tmp_path):
 
 def test_session_trace_returns_none_for_unknown_session():
     assert server.build_session_trace("sess-missing", []) is None
+
+
+def test_session_trace_includes_saved_label_when_present():
+    calls = [make_call(request_id="r1", session_id="sess-1")]
+    trace = server.build_session_trace("sess-1", calls, "Add a login page to the app")
+    assert trace["label"] == "Add a login page to the app"
+
+
+def test_session_trace_label_is_empty_when_no_saved_label():
+    calls = [make_call(request_id="r1", session_id="sess-1")]
+    trace = server.build_session_trace("sess-1", calls)
+    assert trace["label"] == ""
 
 
 def test_fetch_session_calls_matches_unbounded_fetch_then_python_filter(tmp_path):
@@ -583,6 +597,38 @@ def test_usage_limit_events_surfaced_separately_and_not_counted_as_calls(tmp_pat
     assert sessions[0]["usage_limit_hit"] is True
 
 
+def test_app_sessions_surfaces_saved_label_and_falls_back_to_empty_without_one(tmp_path):
+    root = make_project(
+        tmp_path, "proj",
+        calls=[
+            make_call(request_id="r1", session_id="sess-labeled"),
+            make_call(request_id="r2", session_id="sess-unlabeled"),
+        ],
+        labels={"sess-labeled": "Add a login page to the app"},
+    )
+    app = server.TokenMeteringApp(root)
+
+    sessions = {s["session_id"]: s for s in app.sessions("life")}
+
+    assert sessions["sess-labeled"]["label"] == "Add a login page to the app"
+    assert sessions["sess-unlabeled"]["label"] == ""
+
+
+def test_app_session_trace_surfaces_saved_label_and_falls_back_to_empty_without_one(tmp_path):
+    root = make_project(
+        tmp_path, "proj",
+        calls=[
+            make_call(request_id="r1", session_id="sess-labeled"),
+            make_call(request_id="r2", session_id="sess-unlabeled"),
+        ],
+        labels={"sess-labeled": "Add a login page to the app"},
+    )
+    app = server.TokenMeteringApp(root)
+
+    assert app.session_trace("sess-labeled")["label"] == "Add a login page to the app"
+    assert app.session_trace("sess-unlabeled")["label"] == ""
+
+
 def test_rollup_sessions_normalizes_a_null_agent_instead_of_crashing():
     calls = [
         make_call(request_id="r1", session_id="sess-1", agent=None),
@@ -605,9 +651,44 @@ def test_session_without_usage_limit_event_reports_false():
     assert sessions[0]["usage_limit_hit"] is False
 
 
+def test_rollup_sessions_includes_saved_label_when_present():
+    calls = [make_call(request_id="r1", session_id="sess-1")]
+    for row in calls:
+        row["project"] = "proj"
+
+    sessions = server.rollup_sessions(calls, [], {"sess-1": "Add a login page to the app"})
+
+    assert sessions[0]["label"] == "Add a login page to the app"
+
+
+def test_rollup_sessions_label_is_empty_when_no_saved_label():
+    calls = [make_call(request_id="r1", session_id="sess-1")]
+    for row in calls:
+        row["project"] = "proj"
+
+    sessions_no_labels_arg = server.rollup_sessions(calls, [])
+    assert sessions_no_labels_arg[0]["label"] == ""
+
+    sessions_unmatched_labels = server.rollup_sessions(calls, [], {"sess-other": "Some other session"})
+    assert sessions_unmatched_labels[0]["label"] == ""
+
+
 # --------------------------------------------------------------------------
 # Transcript unavailable / available
 # --------------------------------------------------------------------------
+
+
+def test_encode_project_path_swaps_dots_as_well_as_slashes(tmp_path):
+    # Claude Code's own encoding swaps "." for "-" too, not just "/" - a
+    # project folder segment with a dot in it (e.g. "cairn-2.0") otherwise
+    # encodes to the wrong folder name and its transcripts are never found.
+    root = tmp_path / "cairn-2.0" / "token-metering"
+    root.mkdir(parents=True)
+
+    encoded = server.encode_project_path(root)
+
+    assert "." not in encoded
+    assert encoded == str(root.resolve()).replace("/", "-").replace(".", "-")
 
 
 def test_call_detail_transcript_unavailable_still_reports_correct_tokens_and_cost(tmp_path):

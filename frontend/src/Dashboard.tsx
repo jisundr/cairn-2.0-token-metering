@@ -15,7 +15,7 @@ import type { RangeKey } from "./api/types";
 import { ActivityHeatmap } from "./components/ActivityHeatmap";
 import { EmptyState } from "./components/EmptyState";
 import { HbarGroupLabel, HbarList } from "./components/HbarList";
-import { Header } from "./components/Header";
+import { type DashboardTab, Header } from "./components/Header";
 import { ProjectsPanel } from "./components/ProjectsPanel";
 import { SessionDrilldown } from "./components/SessionDrilldown";
 import { SessionsTable } from "./components/SessionsTable";
@@ -40,6 +40,7 @@ export function Dashboard({ onOpenCall, drawerCall, onCloseDrawer, onViewFullPag
   const [sessionsRange, setSessionsRange] = useState<RangeKey>(DEFAULT_SESSIONS_RANGE);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [activeTab, setActiveTab] = useState<DashboardTab>("dashboard");
 
   const projectParam = projectFilter === "all" ? undefined : projectFilter;
 
@@ -84,111 +85,141 @@ export function Dashboard({ onOpenCall, drawerCall, onCloseDrawer, onViewFullPag
     projects.refetch();
   }
 
+  // The warning banner's "view session" link lives on the Dashboard tab but
+  // points at a session's drilldown, which now renders on the Sessions tab -
+  // select it there too so the existing jump-to-session behavior still works.
+  function handleViewSession(sessionId: string) {
+    setSelectedSessionId(sessionId);
+    setActiveTab("sessions");
+  }
+
   return (
     <div
       className="mx-auto max-w-[1180px] rounded-[6px] border border-(--paper-line) bg-(--window) px-7 py-6.5 shadow-[0_1px_0_var(--paper-line-soft)]"
       data-testid="dashboard"
     >
-      <Header lastUpdated={lastUpdated} onRefresh={handleRefresh} />
+      <Header lastUpdated={lastUpdated} onRefresh={handleRefresh} activeTab={activeTab} onTabChange={setActiveTab} />
 
       {isColdStart ? (
         <EmptyState />
       ) : (
         <>
-          <WarningBanner events={usageLimitEvents.data ?? []} onViewSession={setSelectedSessionId} />
+          {activeTab === "dashboard" && (
+            <div data-testid="tab-panel-dashboard">
+              <WarningBanner events={usageLimitEvents.data ?? []} onViewSession={handleViewSession} />
 
-          <div className="mb-4.5 flex flex-wrap gap-3" data-testid="meter-row">
-            <MeterBox
-              label="Tokens today"
-              value={formatTokens(todayTimeseries.data?.total_tokens ?? 0)}
-              testId="meter-tokens-today"
-            />
-            <MeterBox
-              label="Cost today"
-              value={todayTimeseries.data ? formatCost(todayTimeseries.data.total_cost) : formatCost(0)}
-              testId="meter-cost-today"
-            />
-            <MeterBox
-              label="Tokens 7D"
-              value={formatTokens(sevenDayTimeseries.data?.total_tokens ?? 0)}
-              testId="meter-tokens-7d"
-            />
-          </div>
+              <div className="mb-4.5 flex flex-wrap gap-3" data-testid="meter-row">
+                <MeterBox
+                  label="Tokens today"
+                  value={formatTokens(todayTimeseries.data?.total_tokens ?? 0)}
+                  testId="meter-tokens-today"
+                />
+                <MeterBox
+                  label="Cost today"
+                  value={todayTimeseries.data ? formatCost(todayTimeseries.data.total_cost) : formatCost(0)}
+                  testId="meter-cost-today"
+                />
+                <MeterBox
+                  label="Tokens 7D"
+                  value={formatTokens(sevenDayTimeseries.data?.total_tokens ?? 0)}
+                  testId="meter-tokens-7d"
+                />
+              </div>
 
-          <div className="mb-5.5 grid grid-cols-1 gap-4.5 lg:grid-cols-[1.3fr_1fr]">
-            <TokensPerDayPanel project={projectParam} />
+              <div className="mb-5.5 grid grid-cols-1 gap-4.5 lg:grid-cols-[1.3fr_1fr]">
+                <TokensPerDayPanel project={projectParam} />
 
-            <Panel>
-              <PanelTitle>Agents &amp; skills, {HBAR_RANGE}</PanelTitle>
-              <HbarGroupLabel>tokens by agent</HbarGroupLabel>
-              <HbarList
-                data-testid="agent-rollup"
-                rows={(agentRollup.data ?? []).map((r) => ({
-                  label: r.key,
-                  value: r.tokens,
-                  display: formatTokens(r.tokens),
-                }))}
+                <Panel>
+                  <PanelTitle>Agents &amp; skills, {HBAR_RANGE}</PanelTitle>
+                  <HbarGroupLabel>tokens by agent</HbarGroupLabel>
+                  <HbarList
+                    data-testid="agent-rollup"
+                    rows={(agentRollup.data ?? []).map((r) => ({
+                      label: r.key,
+                      value: r.tokens,
+                      display: formatTokens(r.tokens),
+                    }))}
+                  />
+                  <HbarGroupLabel>skills invoked</HbarGroupLabel>
+                  <HbarList
+                    data-testid="skill-rollup"
+                    rows={(skillRollup.data ?? []).map((r) => ({
+                      label: r.key,
+                      value: r.count,
+                      display: `${r.count}×`,
+                    }))}
+                    emptyText="No skills invoked yet."
+                  />
+                </Panel>
+
+                <Panel>
+                  <PanelTitle>Activity</PanelTitle>
+                  <p className="-mt-2 mb-1 text-[11px] text-(--ink-soft)">
+                    When calls happen, by hour of day — last 7 days.
+                  </p>
+                  <ActivityHeatmap calls={heatmap.data ?? []} />
+                </Panel>
+
+                <Panel>
+                  <PanelTitle>Tokens / model, {HBAR_RANGE}</PanelTitle>
+                  <HbarList
+                    data-testid="model-rollup"
+                    rows={(modelRollup.data ?? []).map((r) => ({
+                      label: r.key,
+                      value: r.tokens,
+                      display: formatTokens(r.tokens),
+                    }))}
+                  />
+                </Panel>
+
+                <Panel>
+                  <PanelTitle>Tool calls, {HBAR_RANGE}</PanelTitle>
+                  <HbarList
+                    data-testid="tool-rollup"
+                    rows={(toolRollup.data ?? []).map((r) => ({
+                      label: r.key,
+                      value: r.count,
+                      display: String(r.count),
+                    }))}
+                  />
+                </Panel>
+
+                <Panel>
+                  <PanelTitle>MCP calls, {HBAR_RANGE}</PanelTitle>
+                  <HbarList
+                    data-testid="mcp-rollup"
+                    rows={(mcpRollup.data ?? []).map((r) => ({
+                      label: r.key,
+                      value: r.count,
+                      display: String(r.count),
+                    }))}
+                    emptyText="No MCP calls yet."
+                  />
+                </Panel>
+
+                {multiProject && <ProjectsPanel sessions={sessionRows} />}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "sessions" && (
+            <div data-testid="tab-panel-sessions">
+              <SessionsTable
+                sessions={sessionRows}
+                multiProject={multiProject}
+                selectedSessionId={selectedSessionId}
+                onSelect={setSelectedSessionId}
+                projectFilter={projectFilter}
+                onProjectFilterChange={setProjectFilter}
+                projectLabels={(projects.data ?? []).map((p) => p.label)}
+                sessionsRange={sessionsRange}
+                onSessionsRangeChange={setSessionsRange}
               />
-              <HbarGroupLabel>skills invoked</HbarGroupLabel>
-              <HbarList
-                data-testid="skill-rollup"
-                rows={(skillRollup.data ?? []).map((r) => ({ label: r.key, value: r.count, display: `${r.count}×` }))}
-                emptyText="No skills invoked yet."
-              />
-            </Panel>
 
-            <Panel>
-              <PanelTitle>Activity</PanelTitle>
-              <p className="-mt-2 mb-1 text-[11px] text-(--ink-soft)">When calls happen, by hour of day — last 7 days.</p>
-              <ActivityHeatmap calls={heatmap.data ?? []} />
-            </Panel>
-
-            <Panel>
-              <PanelTitle>Tokens / model, {HBAR_RANGE}</PanelTitle>
-              <HbarList
-                data-testid="model-rollup"
-                rows={(modelRollup.data ?? []).map((r) => ({
-                  label: r.key,
-                  value: r.tokens,
-                  display: formatTokens(r.tokens),
-                }))}
-              />
-            </Panel>
-
-            <Panel>
-              <PanelTitle>Tool calls, {HBAR_RANGE}</PanelTitle>
-              <HbarList
-                data-testid="tool-rollup"
-                rows={(toolRollup.data ?? []).map((r) => ({ label: r.key, value: r.count, display: String(r.count) }))}
-              />
-            </Panel>
-
-            <Panel>
-              <PanelTitle>MCP calls, {HBAR_RANGE}</PanelTitle>
-              <HbarList
-                data-testid="mcp-rollup"
-                rows={(mcpRollup.data ?? []).map((r) => ({ label: r.key, value: r.count, display: String(r.count) }))}
-                emptyText="No MCP calls yet."
-              />
-            </Panel>
-
-            {multiProject && <ProjectsPanel sessions={sessionRows} />}
-          </div>
-
-          <SessionsTable
-            sessions={sessionRows}
-            multiProject={multiProject}
-            selectedSessionId={selectedSessionId}
-            onSelect={setSelectedSessionId}
-            projectFilter={projectFilter}
-            onProjectFilterChange={setProjectFilter}
-            projectLabels={(projects.data ?? []).map((p) => p.label)}
-            sessionsRange={sessionsRange}
-            onSessionsRangeChange={setSessionsRange}
-          />
-
-          {selectedSession && (
-            <SessionDrilldown session={selectedSession} project={projectParam} onOpenCall={onOpenCall} />
+              {selectedSession && (
+                <SessionDrilldown session={selectedSession} project={projectParam} onOpenCall={onOpenCall} />
+              )}
+            </div>
           )}
         </>
       )}

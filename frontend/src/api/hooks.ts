@@ -2,8 +2,9 @@
 // at 15s (03-architecture.md's Serving side: capture only ever happens on
 // a Stop event, so faster polling wouldn't surface data sooner - 15s still
 // feels live without hammering the sqlite read path).
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { api, ApiNotFoundError, type RangeParams } from "./client";
+import type { CallDetail } from "./types";
 
 export const POLL_INTERVAL_MS = 15_000;
 
@@ -114,5 +115,20 @@ export function useCallDetail(sessionId: string | null, n: number | null, projec
     queryFn: () => api.callDetail(sessionId as string, n as number, project),
     enabled: sessionId !== null && n !== null,
     retry: (failureCount, error) => !(error instanceof ApiNotFoundError) && failureCount < 2,
+  });
+}
+
+// Batched per-call detail for SessionDrilldown's chat-thread: one query per
+// `global_position`, sharing useCallDetail's own cache entries (same query
+// key shape) so opening the trace drawer for a call already rendered in the
+// thread doesn't refetch it. Order of the returned results matches `positions`.
+export function useCallDetails(sessionId: string | null, positions: number[], project?: string) {
+  return useQueries({
+    queries: positions.map((n) => ({
+      queryKey: ["call-detail", sessionId, n, project ?? "all"],
+      queryFn: (): Promise<CallDetail> => api.callDetail(sessionId as string, n, project),
+      enabled: sessionId !== null,
+      retry: (failureCount: number, error: unknown) => !(error instanceof ApiNotFoundError) && failureCount < 2,
+    })),
   });
 }

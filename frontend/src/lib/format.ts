@@ -30,6 +30,13 @@ export function formatDayLabel(dateStr: string): string {
   return `${month}-${day}`;
 }
 
+// Fallback label for a session with no saved title yet (parser.py found no
+// "ai-title" record) - first 8 chars of the session's full UUID, matching
+// the mockup's `9f2a44c1`-style short id.
+export function shortId(id: string): string {
+  return id.slice(0, 8);
+}
+
 export function formatStarted(iso: string): string {
   const d = new Date(iso);
   const month = String(d.getMonth() + 1).padStart(2, "0");

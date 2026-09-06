@@ -1,7 +1,7 @@
-import { type ReactNode, useState } from "react";
-import { useSessionTrace } from "../api/hooks";
-import type { AgentTrace, SessionSummary } from "../api/types";
-import { formatCost, formatDuration, formatTimeOfDay, formatTokens } from "../lib/format";
+import { useState } from "react";
+import { useCallDetails, useSessionTrace } from "../api/hooks";
+import type { CallDetail, SessionSummary, TraceCall } from "../api/types";
+import { formatCost, formatDuration, formatTimeOfDay, formatTokens, shortId } from "../lib/format";
 
 interface SessionDrilldownProps {
   session: SessionSummary;
@@ -21,85 +21,159 @@ function formatSessionDuration(startIso: string, endIso: string): string {
   return `${Math.round(totalSeconds)}s`;
 }
 
-// Per-agent expand/collapse rows, each with its call trace table
-// (/api/session/<id>/trace) - matches the mockup's `.drilldown` block.
+const CHANNEL_COLORS = ["var(--ch1)", "var(--ch2)", "var(--ch3)", "var(--ch4)"];
+
+interface MergedCall {
+  call: TraceCall;
+  agentName: string;
+  channelColor: string;
+}
+
+// Checkbox-driven agent-select rows (DESIGN.md's "Agent-select rows") above
+// one always-visible, global_position-ordered chat-thread merging every
+// agent's calls (DESIGN.md's "Chat thread") - replaces the former per-agent
+// click-to-expand accordion + trace table. Checking an agent dims (not
+// removes) every other agent's turns in the thread below.
 export function SessionDrilldown({ session, project, onOpenCall }: SessionDrilldownProps) {
   const { data: trace } = useSessionTrace(session.session_id, project);
+  const [checkedAgents, setCheckedAgents] = useState<Set<string>>(new Set());
+
+  const maxTokens = trace ? Math.max(...trace.agents.map((a) => a.tokens), 1) : 1;
+  const totalTokens = trace ? trace.agents.reduce((sum, a) => sum + a.tokens, 0) : 0;
+  // The token-dominant agent is where session cost is concentrated, so it's
+  // called out in the head line even though nothing auto-expands anymore.
+  const dominantAgent = trace
+    ? trace.agents.reduce((best, a) => (a.tokens > best.tokens ? a : best), trace.agents[0])
+    : null;
+  const dominantShare = totalTokens > 0 ? Math.round(((dominantAgent?.tokens ?? 0) / totalTokens) * 100) : 0;
+
+  const agentsWithColor = (trace?.agents ?? []).map((agent, index) => ({
+    agent,
+    name: agent.agent ?? "unknown",
+    channelColor: CHANNEL_COLORS[index % CHANNEL_COLORS.length],
+  }));
+
+  const mergedCalls: MergedCall[] = agentsWithColor
+    .flatMap(({ agent, name, channelColor }) => agent.trace.map((call) => ({ call, agentName: name, channelColor })))
+    .sort((a, b) => a.call.global_position - b.call.global_position);
+
+  const detailQueries = useCallDetails(
+    session.session_id,
+    mergedCalls.map((m) => m.call.global_position),
+    project,
+  );
 
   if (!trace) return null;
 
-  const maxTokens = Math.max(...trace.agents.map((a) => a.tokens), 1);
-  const totalTokens = trace.agents.reduce((sum, a) => sum + a.tokens, 0);
-  // Auto-expanded by default so the panel shows something useful without a
-  // click; the token-dominant agent is where session cost is concentrated,
-  // so it's the one worth seeing first.
-  const dominantAgent = trace.agents.reduce((best, a) => (a.tokens > best.tokens ? a : best), trace.agents[0]);
-  const dominantShare = totalTokens > 0 ? Math.round(((dominantAgent?.tokens ?? 0) / totalTokens) * 100) : 0;
+  function toggleAgent(name: string) {
+    setCheckedAgents((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
 
   return (
     <div className="rounded-[4px] border border-(--paper-line) bg-(--window)" data-testid="session-drilldown">
       <div className="flex flex-wrap items-baseline gap-2.5 rounded-t-[3px] border-b border-(--paper-line) bg-(--bone-dim) px-4.5 py-3.5">
-        <span className="text-[13px] font-bold">Session {session.session_id}</span>
+        <span className="text-[13px] font-bold">{session.label || `Session ${shortId(session.session_id)}`}</span>
         <span className="font-mono text-[11.5px] text-(--ink-soft)">
           {formatSessionDuration(trace.started, trace.ended)} runtime
           {dominantAgent && ` · ${dominantAgent.agent ?? "unknown"} dominant (${dominantShare}% of tokens)`}
         </span>
       </div>
 
-      {trace.agents.map((agent, index) => (
-        <AgentRow
-          key={agent.agent ?? "unknown"}
-          agent={agent}
-          index={index}
-          maxTokens={maxTokens}
-          sessionId={session.session_id}
-          onOpenCall={onOpenCall}
-          defaultOpen={agent.agent === dominantAgent?.agent}
-        />
-      ))}
+      <div className="border-b border-(--paper-line)" data-testid="agent-select-list">
+        {agentsWithColor.map(({ agent, name, channelColor }) => (
+          <AgentSelectRow
+            key={name}
+            calls={agent.calls}
+            tokens={agent.tokens}
+            cost={agent.cost}
+            name={name}
+            maxTokens={maxTokens}
+            channelColor={channelColor}
+            checked={checkedAgents.has(name)}
+            onToggle={() => toggleAgent(name)}
+          />
+        ))}
+      </div>
+
+      <div
+        className="mx-4.5 my-2.5 rounded-[4px] border border-(--paper-line) bg-(--bone-dim) px-4.5 pt-4 pb-1"
+        data-testid="chat-thread"
+      >
+        <div className="font-label mb-4 text-[9.5px] font-bold tracking-wide text-(--ink-soft) uppercase">
+          full transcript — check an agent above to highlight its calls
+        </div>
+        {mergedCalls.map(({ call, agentName, channelColor }, i) => (
+          <ChatTurn
+            key={call.request_id}
+            sessionId={session.session_id}
+            call={call}
+            agentName={agentName}
+            channelColor={channelColor}
+            detail={detailQueries[i]?.data}
+            isLoading={detailQueries[i]?.isLoading ?? false}
+            dimmed={checkedAgents.size > 0 && !checkedAgents.has(agentName)}
+            onOpenCall={onOpenCall}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
-const CHANNEL_COLORS = ["var(--ch1)", "var(--ch2)", "var(--ch3)", "var(--ch4)"];
-
-function AgentRow({
-  agent,
-  index,
+function AgentSelectRow({
+  name,
+  calls,
+  tokens,
+  cost,
   maxTokens,
-  sessionId,
-  onOpenCall,
-  defaultOpen,
+  channelColor,
+  checked,
+  onToggle,
 }: {
-  agent: AgentTrace;
-  index: number;
+  name: string;
+  calls: number;
+  tokens: number;
+  cost: number | "unknown" | null;
   maxTokens: number;
-  sessionId: string;
-  onOpenCall: (sessionId: string, position: number) => void;
-  defaultOpen: boolean;
+  channelColor: string;
+  checked: boolean;
+  onToggle: () => void;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
-  const name = agent.agent ?? "unknown";
   const isSubagent = name !== "main";
-  const channelColor = CHANNEL_COLORS[index % CHANNEL_COLORS.length];
+  const checkboxId = `agent-select-${name}`;
 
   return (
-    <div className="border-b border-(--paper-line) last:border-b-0" data-testid={`agent-row-${name}`}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        data-testid={`agent-row-toggle-${name}`}
-        aria-expanded={open}
+    <div className="border-b border-(--paper-line-soft) last:border-b-0" data-testid={`agent-row-${name}`}>
+      <label
+        htmlFor={checkboxId}
         className={
-          "grid w-full cursor-pointer grid-cols-[18px_110px_1fr_90px_90px_70px] items-center gap-3 border-0 px-4.5 py-3 text-left text-[13px] " +
-          (open ? "bg-(--signal-soft)" : "bg-transparent")
+          "grid w-full cursor-pointer grid-cols-[18px_110px_1fr_90px_90px_70px] items-center gap-3 px-4.5 py-3 text-left text-[13px] " +
+          (checked ? "bg-(--bone-dim)" : "bg-transparent")
         }
       >
-        <span className={"font-label text-[11px] " + (open ? "text-(--signal)" : "text-(--ink-soft)")}>
-          {open ? "▾" : "▸"}
-        </span>
+        <input
+          type="checkbox"
+          id={checkboxId}
+          data-testid={checkboxId}
+          checked={checked}
+          onChange={onToggle}
+          className="sr-only"
+        />
+        <span
+          aria-hidden="true"
+          className="h-2.25 w-2.25 shrink-0 rounded-[2px] border-[1.5px]"
+          style={
+            checked
+              ? { backgroundColor: channelColor, borderColor: channelColor }
+              : { backgroundColor: "transparent", borderColor: "var(--ink-faint)" }
+          }
+        />
         <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold leading-tight">
-          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: channelColor }} />
           <span className="truncate">{name}</span>
           {isSubagent && (
             <span className="font-label shrink-0 rounded-[3px] border border-(--paper-line) px-1 py-0.5 text-[9.5px] lowercase text-(--ink-faint)">
@@ -107,88 +181,104 @@ function AgentRow({
             </span>
           )}
         </span>
-        <div className="h-2 overflow-hidden rounded-[2px] border border-(--paper-line) bg-(--bone-dim)">
-          <div
-            className="h-full"
-            style={{ width: `${(agent.tokens / maxTokens) * 100}%`, backgroundColor: channelColor }}
-          />
+        <div
+          className="h-2 overflow-hidden rounded-[2px] border border-(--paper-line) bg-(--bone-dim)"
+          data-testid={`agent-mini-bar-${name}`}
+        >
+          <div className="h-full" style={{ width: `${(tokens / maxTokens) * 100}%`, backgroundColor: channelColor }} />
         </div>
+        <span className="font-label text-right text-[11.5px] text-(--ink-soft) tabular-nums">{calls} calls</span>
         <span className="font-label text-right text-[11.5px] text-(--ink-soft) tabular-nums">
-          {agent.calls} calls
+          {formatTokens(tokens)} tok
         </span>
-        <span className="font-label text-right text-[11.5px] text-(--ink-soft) tabular-nums">
-          {formatTokens(agent.tokens)} tok
-        </span>
-        <span className="font-label text-right text-[12px] font-bold tabular-nums">{formatCost(agent.cost)}</span>
-      </button>
-
-      {open && (
-        <div className="overflow-visible px-4.5 pb-4" data-testid={`agent-trace-${name}`}>
-          <table className="font-label w-full min-w-[640px] border-collapse text-[11px]">
-            <thead>
-              <tr>
-                <TraceTh>#</TraceTh>
-                <TraceTh>time</TraceTh>
-                <TraceTh>model</TraceTh>
-                <TraceTh>in</TraceTh>
-                <TraceTh>out</TraceTh>
-                <TraceTh>cost</TraceTh>
-                <TraceTh>dur</TraceTh>
-                <TraceTh center>detail</TraceTh>
-              </tr>
-            </thead>
-            <tbody>
-              {agent.trace.map((call) => (
-                <tr key={call.request_id} data-testid={`trace-row-${sessionId}-${call.position}`}>
-                  <TraceTd left>{call.position}</TraceTd>
-                  <TraceTd>{formatTimeOfDay(call.timestamp)}</TraceTd>
-                  <TraceTd>{call.model}</TraceTd>
-                  <TraceTd>{call.input_tokens.toLocaleString()}</TraceTd>
-                  <TraceTd>{call.output_tokens.toLocaleString()}</TraceTd>
-                  <TraceTd>{formatCost(call.cost)}</TraceTd>
-                  <TraceTd>{formatDuration(call.duration_seconds)}</TraceTd>
-                  <TraceTd center>
-                    <button
-                      type="button"
-                      onClick={() => onOpenCall(sessionId, call.global_position)}
-                      data-testid={`trace-toggle-${sessionId}-${call.position}`}
-                      className="inline-flex h-4.75 w-4.75 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-dashed border-(--ink-faint) text-[10px] text-(--ink-soft) select-none"
-                    >
-                      ⋯
-                    </button>
-                  </TraceTd>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+        <span className="font-label text-right text-[12px] font-bold tabular-nums">{formatCost(cost)}</span>
+      </label>
     </div>
   );
 }
 
-function TraceTh({ children, center }: { children: ReactNode; center?: boolean }) {
+function ChatTurn({
+  sessionId,
+  call,
+  agentName,
+  channelColor,
+  detail,
+  isLoading,
+  dimmed,
+  onOpenCall,
+}: {
+  sessionId: string;
+  call: TraceCall;
+  agentName: string;
+  channelColor: string;
+  detail: CallDetail | undefined;
+  isLoading: boolean;
+  dimmed: boolean;
+  onOpenCall: (sessionId: string, position: number) => void;
+}) {
   return (
-    <th
-      className={
-        "border-b border-(--paper-line) px-2 py-1.5 font-normal whitespace-nowrap text-(--ink-soft) " +
-        (center ? "text-center" : "text-right")
-      }
+    <div
+      className="border-l border-(--paper-line) pb-4 pl-3.5 transition-opacity duration-150 [&+&]:mt-4 [&+&]:border-t [&+&]:border-dashed [&+&]:border-(--paper-line) [&+&]:pt-4"
+      style={{ opacity: dimmed ? 0.32 : 1 }}
+      data-testid={`chat-turn-${sessionId}-${call.global_position}`}
     >
-      {children}
-    </th>
+      <div className="font-mono mb-2.5 flex flex-wrap items-center gap-2 text-[10px] tabular-nums text-(--ink-soft)">
+        <span className="font-label font-bold" style={{ color: channelColor }}>
+          {agentName}
+        </span>
+        <span>
+          · #{call.position} · {formatTimeOfDay(call.timestamp)} · {call.model} ·{" "}
+          {call.input_tokens.toLocaleString()} in / {call.output_tokens.toLocaleString()} out ·{" "}
+          {formatCost(call.cost)} · {formatDuration(call.duration_seconds)}
+        </span>
+        <button
+          type="button"
+          onClick={() => onOpenCall(sessionId, call.global_position)}
+          data-testid={`view-full-detail-${sessionId}-${call.global_position}`}
+          className="font-label ml-auto cursor-pointer border-0 border-b border-(--ink-faint) bg-transparent p-0 text-[9.5px] tracking-wide whitespace-nowrap text-(--ink-soft) uppercase"
+        >
+          view full detail
+        </button>
+      </div>
+
+      <ChatBubble role="prompt" align="left" isLoading={isLoading} detail={detail} field="prompt" />
+      <ChatBubble role="response" align="right" isLoading={isLoading} detail={detail} field="response" />
+    </div>
   );
 }
 
-function TraceTd({ children, left, center }: { children: ReactNode; left?: boolean; center?: boolean }) {
+function ChatBubble({
+  role,
+  align,
+  isLoading,
+  detail,
+  field,
+}: {
+  role: "prompt" | "response";
+  align: "left" | "right";
+  isLoading: boolean;
+  detail: CallDetail | undefined;
+  field: "prompt" | "response";
+}) {
+  const isRight = align === "right";
+  const text = detail ? (detail.available ? (detail[field] ?? "") : "Transcript unavailable.") : null;
+
   return (
-    <td
-      className={
-        "border-b border-dashed border-(--paper-line) px-2 py-1.5 whitespace-nowrap tabular-nums " +
-        (left ? "text-left" : center ? "text-center" : "text-right")
-      }
-    >
-      {children}
-    </td>
+    <div className={"mb-2.5 max-w-[80%] last:mb-0 " + (isRight ? "ml-auto" : "mr-auto")}>
+      <span
+        className={
+          "font-label mb-1 block text-[9px] tracking-wide text-(--ink-faint) uppercase " + (isRight ? "text-right" : "")
+        }
+      >
+        {role}
+      </span>
+      <div
+        className="rounded-[4px] border border-(--paper-line) px-3 py-2.5 text-[12px] whitespace-pre-wrap"
+        style={isRight ? { backgroundColor: "var(--ch1-soft)", borderColor: "var(--ch1-soft)" } : undefined}
+        data-testid={`chat-bubble-${role}`}
+      >
+        {isLoading ? <span className="text-(--ink-soft) italic">loading…</span> : text}
+      </div>
+    </div>
   );
 }

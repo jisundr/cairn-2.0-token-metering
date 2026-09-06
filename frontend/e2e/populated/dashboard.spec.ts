@@ -1,9 +1,22 @@
-import { expect, test } from "@playwright/test";
-import { formatCost, formatTokens } from "../../src/lib/format";
+import { expect, type Page, test } from "@playwright/test";
+import { formatCost, formatTokens, shortId } from "../../src/lib/format";
 
 // Against the "populated" webServer (fixtures/seed.py): a project with
 // calls/tool-uses/a usage-limit event across three agents on one session,
 // plus one older call on a second session (plan.md's Actionable 5).
+
+// Mirrors fixtures/seed.py's SESSION_MAIN_LABEL - e2e-session-main has a
+// saved label, e2e-session-other doesn't (so it still exercises the
+// short-id fallback).
+const SESSION_MAIN_LABEL = "Add a login page to the app";
+
+// The SessionsTable/SessionDrilldown live under the Sessions tab
+// (dashboard-fixup plan.md's Actionables 2-3) - the app defaults to the
+// Dashboard tab, so any test that needs them switches first.
+async function openSessionsTab(page: Page) {
+  await page.getByTestId("app-tab-sessions").click();
+  await expect(page.getByTestId("tab-panel-sessions")).toBeVisible();
+}
 
 test.describe("populated dashboard", () => {
   test.beforeEach(async ({ page }) => {
@@ -24,9 +37,51 @@ test.describe("populated dashboard", () => {
     await expect(page.getByTestId("activity-heatmap")).toBeVisible();
   });
 
+  test("switches between the Dashboard and Sessions tab panels", async ({ page }) => {
+    await expect(page.getByTestId("tab-panel-dashboard")).toBeVisible();
+    await expect(page.getByTestId("tab-panel-sessions")).toHaveCount(0);
+    await expect(page.getByTestId("app-tab-dashboard")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("app-tab-sessions")).toHaveAttribute("aria-pressed", "false");
+
+    await page.getByTestId("app-tab-sessions").click();
+    await expect(page.getByTestId("tab-panel-sessions")).toBeVisible();
+    await expect(page.getByTestId("tab-panel-dashboard")).toHaveCount(0);
+    await expect(page.getByTestId("app-tab-sessions")).toHaveAttribute("aria-pressed", "true");
+    // Sessions tab renders the sessions table and, for the auto-selected
+    // most-recent session, its drilldown.
+    await expect(page.getByTestId("sessions-table")).toBeVisible();
+    await expect(page.getByTestId("session-drilldown")).toBeVisible();
+
+    await page.getByTestId("app-tab-dashboard").click();
+    await expect(page.getByTestId("tab-panel-dashboard")).toBeVisible();
+    await expect(page.getByTestId("tab-panel-sessions")).toHaveCount(0);
+  });
+
   test("lists both seeded sessions", async ({ page }) => {
+    await openSessionsTab(page);
     await expect(page.getByTestId("session-row-e2e-session-main")).toBeVisible();
     await expect(page.getByTestId("session-row-e2e-session-other")).toBeVisible();
+  });
+
+  test("session label: saved title is the primary label, falling back to a short id when none is saved", async ({
+    page,
+  }) => {
+    await openSessionsTab(page);
+
+    // e2e-session-main has a saved label - shown as-is, in both the table
+    // row and (auto-selected, being the most recent session) the drilldown
+    // header, instead of any id.
+    const mainRow = page.getByTestId("session-row-e2e-session-main");
+    await expect(mainRow).toContainText(SESSION_MAIN_LABEL);
+    await expect(page.getByTestId("session-drilldown")).toContainText(SESSION_MAIN_LABEL);
+
+    // e2e-session-other has no saved label - falls back to its short id in
+    // both places instead.
+    const otherRow = page.getByTestId("session-row-e2e-session-other");
+    await expect(otherRow).toContainText(shortId("e2e-session-other"));
+
+    await otherRow.click();
+    await expect(page.getByTestId("session-drilldown")).toContainText(shortId("e2e-session-other"));
   });
 
   test("sessions table defaults to the last-30-days range and switches to all time", async ({ page }) => {
@@ -39,6 +94,8 @@ test.describe("populated dashboard", () => {
     await page.goto("/");
     await expect(page.getByTestId("dashboard")).toBeVisible();
     await expect.poll(() => lastRangeParam).toBe("30d");
+
+    await openSessionsTab(page);
     await expect(page.getByTestId("sessions-range-30d")).toHaveClass(/bg-\(--signal\)/);
 
     await page.getByTestId("sessions-range-life").click();
@@ -47,6 +104,7 @@ test.describe("populated dashboard", () => {
   });
 
   test("sessions table sits in a bounded, scrollable container", async ({ page }) => {
+    await openSessionsTab(page);
     const table = page.getByTestId("sessions-table");
     const overflowY = await table.evaluate((el) => getComputedStyle(el.parentElement as Element).overflowY);
     expect(overflowY).toBe("auto");
@@ -57,7 +115,11 @@ test.describe("populated dashboard", () => {
     await expect(banner).toBeVisible();
     await expect(banner).toContainText("e2e-session-main");
     await page.getByTestId("usage-limit-view-session").click();
-    await expect(page.getByTestId("session-drilldown")).toContainText("e2e-session-main");
+    // Clicking "view session" from the Dashboard tab jumps straight to the
+    // Sessions tab so the drilldown it points at is actually visible. The
+    // header shows e2e-session-main's saved label rather than its raw id.
+    await expect(page.getByTestId("tab-panel-sessions")).toBeVisible();
+    await expect(page.getByTestId("session-drilldown")).toContainText(SESSION_MAIN_LABEL);
   });
 
   test("meter row shows today/cost/7d totals matching the seeded timeseries data", async ({ page }) => {
@@ -119,11 +181,24 @@ test.describe("populated dashboard", () => {
     expect(sawEmptyDay).toBe(true);
   });
 
-  test("expands an agent row and shows its call trace", async ({ page }) => {
-    await page.getByTestId("agent-row-toggle-main").click();
-    const trace = page.getByTestId("agent-trace-main");
-    await expect(trace).toBeVisible();
-    await expect(trace.getByTestId("trace-row-e2e-session-main-1")).toBeVisible();
+  test("drilldown shows a global_position-ordered chat-thread merging every agent's calls", async ({ page }) => {
+    await openSessionsTab(page);
+
+    // e2e-session-main's calls in chronological (global_position) order:
+    // main (#1, global 1), builder (#1, global 2 - unavailable transcript),
+    // builder (#2, global 3), reviewer (#1, global 4), cairn:planner (#1,
+    // global 5) - the thread merges every agent's calls into one sequence.
+    const thread = page.getByTestId("chat-thread");
+    await expect(thread).toBeVisible();
+    for (const globalPosition of [1, 2, 3, 4, 5]) {
+      await expect(page.getByTestId(`chat-turn-e2e-session-main-${globalPosition}`)).toBeVisible();
+    }
+
+    // DOM order follows global_position, not agent grouping.
+    const turnAgents = await thread.locator("[data-testid^='chat-turn-']").evaluateAll((nodes) =>
+      nodes.map((n) => n.querySelector(".font-label")?.textContent),
+    );
+    expect(turnAgents).toEqual(["main", "builder", "builder", "reviewer", "cairn:planner"]);
   });
 
   test("drilldown renders an unpriced call's cost as 'unknown' without crashing", async ({ page }) => {
@@ -139,29 +214,34 @@ test.describe("populated dashboard", () => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
 
+    await openSessionsTab(page);
     await page.getByTestId("session-row-e2e-session-other").click();
 
     const drilldown = page.getByTestId("session-drilldown");
     await expect(drilldown).toBeVisible();
-    await expect(drilldown).toContainText("e2e-session-other");
+    // e2e-session-other has no saved label, so its header falls back to a
+    // short id rather than the raw session_id.
+    await expect(drilldown).toContainText(shortId("e2e-session-other"));
 
-    // Only agent ("main") is auto-expanded as the token-dominant (only) agent.
-    const trace = page.getByTestId("agent-trace-main");
-    await expect(trace).toBeVisible();
-    await expect(trace.getByTestId("trace-row-e2e-session-other-1")).toContainText("unknown");
+    // e2e-session-other has one call, one agent ("main"), global_position 1.
+    const turn = page.getByTestId("chat-turn-e2e-session-other-1");
+    await expect(turn).toBeVisible();
+    await expect(turn).toContainText("unknown");
 
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
   });
 
-  test("drilldown auto-expands the token-dominant agent and shows a non-duplicate summary", async ({ page }) => {
+  test("drilldown calls out the token-dominant agent and shows a non-duplicate summary", async ({ page }) => {
+    await openSessionsTab(page);
     const drilldown = page.getByTestId("session-drilldown");
     await expect(drilldown).toBeVisible();
 
-    // builder has the most tokens across e2e-session-main's calls, so its
-    // row is expanded without any click; main (fewer tokens) stays closed.
-    await expect(page.getByTestId("agent-trace-builder")).toBeVisible();
-    await expect(page.getByTestId("agent-trace-main")).toHaveCount(0);
+    // Every agent's stats row is visible by default (no accordion) -
+    // builder has the most tokens across e2e-session-main's calls.
+    await expect(page.getByTestId("agent-row-main")).toBeVisible();
+    await expect(page.getByTestId("agent-row-builder")).toBeVisible();
+    await expect(page.getByTestId("agent-row-reviewer")).toBeVisible();
 
     await expect(drilldown).toContainText("runtime");
     await expect(drilldown).toContainText("builder dominant");
@@ -170,11 +250,41 @@ test.describe("populated dashboard", () => {
     await expect(drilldown).not.toContainText("agents ·");
   });
 
+  test("checking an agent dims other agents' chat-thread turns, in place", async ({ page }) => {
+    await openSessionsTab(page);
+    await expect(page.getByTestId("session-drilldown")).toBeVisible();
+
+    const mainTurn = page.getByTestId("chat-turn-e2e-session-main-1"); // main's only call
+    const builderTurn = page.getByTestId("chat-turn-e2e-session-main-2"); // builder's first call
+
+    // Nothing checked - every turn renders at full opacity.
+    await expect(mainTurn).toHaveCSS("opacity", "1");
+    await expect(builderTurn).toHaveCSS("opacity", "1");
+    await expect(page.getByTestId("agent-select-main")).not.toBeChecked();
+
+    // Checking "main" dims (not removes) every other agent's turns, in place.
+    await page.getByTestId("agent-row-main").click();
+    await expect(page.getByTestId("agent-select-main")).toBeChecked();
+    await expect(mainTurn).toHaveCSS("opacity", "1");
+    await expect(builderTurn).toHaveCSS("opacity", "0.32");
+    await expect(builderTurn).toBeVisible();
+
+    // Checking a second agent ("builder" too) un-dims its own turns again.
+    await page.getByTestId("agent-row-builder").click();
+    await expect(builderTurn).toHaveCSS("opacity", "1");
+
+    // Unchecking both restores the default all-visible state.
+    await page.getByTestId("agent-row-main").click();
+    await page.getByTestId("agent-row-builder").click();
+    await expect(mainTurn).toHaveCSS("opacity", "1");
+    await expect(builderTurn).toHaveCSS("opacity", "1");
+  });
+
   test("opens the trace drawer with an available transcript", async ({ page }) => {
-    await page.getByTestId("agent-row-toggle-main").click();
-    // builder is also auto-expanded by default (most tokens) and has its
-    // own per-agent position 1, so scope to main's own trace table.
-    await page.getByTestId("agent-trace-main").getByTestId("trace-toggle-e2e-session-main-1").click();
+    await openSessionsTab(page);
+    // main's only call (global_position 1) is the one seeded with an
+    // available transcript entry.
+    await page.getByTestId("view-full-detail-e2e-session-main-1").click();
 
     const drawer = page.getByTestId("trace-drawer");
     await expect(drawer).toBeVisible();
@@ -186,6 +296,7 @@ test.describe("populated dashboard", () => {
   test("wraps a long subagent name's badge onto its own line, without overflowing the name column", async ({
     page,
   }) => {
+    await openSessionsTab(page);
     const row = page.getByTestId("agent-row-cairn:planner");
     await expect(row).toBeVisible();
 
@@ -199,7 +310,7 @@ test.describe("populated dashboard", () => {
     expect(badgeBox!.y).toBeGreaterThan(nameBox!.y);
     // Neither element spills past the shared 110px name column into the
     // token-bar column beside it.
-    const bar = page.getByTestId("agent-row-toggle-cairn:planner").locator("> div");
+    const bar = row.getByTestId("agent-mini-bar-cairn:planner");
     const barBox = await bar.boundingBox();
     expect(barBox).not.toBeNull();
     expect(nameBox!.x + nameBox!.width).toBeLessThanOrEqual(barBox!.x);
@@ -207,6 +318,7 @@ test.describe("populated dashboard", () => {
   });
 
   test("main row (no badge) renders unchanged", async ({ page }) => {
+    await openSessionsTab(page);
     const row = page.getByTestId("agent-row-main");
     await expect(row).toBeVisible();
     await expect(row.getByText("subagent")).toHaveCount(0);
@@ -241,10 +353,9 @@ test.describe("populated dashboard", () => {
   test("opens the trace drawer with an unavailable transcript for a call with no transcript entry", async ({
     page,
   }) => {
-    // builder has the most tokens in this session, so its row is
-    // auto-expanded by default (SessionDrilldown.tsx) - no toggle click needed.
-    await expect(page.getByTestId("agent-trace-builder")).toBeVisible();
-    await page.getByTestId("trace-toggle-e2e-session-main-1").click();
+    await openSessionsTab(page);
+    // builder's first call (global_position 2) has no transcript entry.
+    await page.getByTestId("view-full-detail-e2e-session-main-2").click();
 
     const drawer = page.getByTestId("trace-drawer");
     await expect(drawer).toBeVisible();
@@ -253,8 +364,8 @@ test.describe("populated dashboard", () => {
   });
 
   test("drawer's full-page link navigates to the standalone call page, in-app", async ({ page }) => {
-    await page.getByTestId("agent-row-toggle-main").click();
-    await page.getByTestId("agent-trace-main").getByTestId("trace-toggle-e2e-session-main-1").click();
+    await openSessionsTab(page);
+    await page.getByTestId("view-full-detail-e2e-session-main-1").click();
     await page.getByTestId("trace-drawer-fullpage-link").click();
 
     await expect(page.getByTestId("call-page")).toBeVisible();
@@ -263,8 +374,8 @@ test.describe("populated dashboard", () => {
   });
 
   test("drawer closes via its backdrop", async ({ page }) => {
-    await page.getByTestId("agent-row-toggle-main").click();
-    await page.getByTestId("agent-trace-main").getByTestId("trace-toggle-e2e-session-main-1").click();
+    await openSessionsTab(page);
+    await page.getByTestId("view-full-detail-e2e-session-main-1").click();
     await expect(page.getByTestId("trace-drawer")).toBeVisible();
 
     await page.getByTestId("trace-drawer-backdrop").click();

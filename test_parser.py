@@ -209,6 +209,85 @@ def test_malformed_json_line_does_not_block_surrounding_entries(tmp_path):
     assert request_ids == {"req-1", "req-2"}
 
 
+def test_extract_ai_title_keeps_last_non_empty_occurrence():
+    entries = [
+        {"type": "ai-title", "aiTitle": "First draft title"},
+        make_call_entry("req-1", tool_use_id="toolu_1"),
+        {"type": "ai-title", "aiTitle": "Revised title"},
+    ]
+    assert parser._extract_ai_title(entries) == "Revised title"
+
+
+def test_extract_ai_title_returns_none_when_absent():
+    entries = [make_call_entry("req-1", tool_use_id="toolu_1")]
+    assert parser._extract_ai_title(entries) is None
+
+
+def test_extract_ai_title_ignores_a_later_empty_title():
+    entries = [
+        {"type": "ai-title", "aiTitle": "Keep this one"},
+        {"type": "ai-title", "aiTitle": ""},
+    ]
+    assert parser._extract_ai_title(entries) == "Keep this one"
+
+
+def test_parse_session_returns_last_ai_title_and_saves_it(tmp_path):
+    cairn_dir = tmp_path / ".cairn"
+    transcript_path = tmp_path / "session.jsonl"
+
+    write_jsonl(transcript_path, [
+        {"type": "ai-title", "aiTitle": "First draft title"},
+        make_call_entry("req-1", tool_use_id="toolu_1"),
+        {"type": "ai-title", "aiTitle": "Revised title"},
+    ])
+
+    title = parser.parse_session(cairn_dir, transcript_path, "sess-1")
+    assert title == "Revised title"
+
+    conn = db.connect(cairn_dir)
+    row = conn.execute("SELECT label FROM session_labels WHERE session_id = 'sess-1'").fetchone()
+    assert row == ("Revised title",)
+
+
+def test_parse_session_returns_none_and_skips_save_when_no_title_found(tmp_path):
+    cairn_dir = tmp_path / ".cairn"
+    transcript_path = tmp_path / "session.jsonl"
+
+    write_jsonl(transcript_path, [
+        make_call_entry("req-1", tool_use_id="toolu_1"),
+    ])
+
+    title = parser.parse_session(cairn_dir, transcript_path, "sess-1")
+    assert title is None
+
+    conn = db.connect(cairn_dir)
+    row = conn.execute("SELECT label FROM session_labels WHERE session_id = 'sess-1'").fetchone()
+    assert row is None
+
+
+def test_parse_session_rerun_without_a_title_does_not_wipe_a_previously_saved_one(tmp_path):
+    cairn_dir = tmp_path / ".cairn"
+    transcript_path = tmp_path / "session.jsonl"
+
+    write_jsonl(transcript_path, [
+        {"type": "ai-title", "aiTitle": "Saved on first pass"},
+        make_call_entry("req-1", tool_use_id="toolu_1"),
+    ])
+    parser.parse_session(cairn_dir, transcript_path, "sess-1")
+
+    # A later pass over a transcript that (for whatever reason) carries no
+    # ai-title record this time must not clear the label already saved.
+    write_jsonl(transcript_path, [
+        make_call_entry("req-1", tool_use_id="toolu_1"),
+    ])
+    title = parser.parse_session(cairn_dir, transcript_path, "sess-1")
+    assert title is None
+
+    conn = db.connect(cairn_dir)
+    row = conn.execute("SELECT label FROM session_labels WHERE session_id = 'sess-1'").fetchone()
+    assert row == ("Saved on first pass",)
+
+
 def test_parse_session_is_idempotent_on_rerun(tmp_path):
     cairn_dir = tmp_path / ".cairn"
     transcript_path = tmp_path / "session.jsonl"

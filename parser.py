@@ -3,7 +3,7 @@
 
 Usage:
     from parser import parse_session
-    parse_session(cairn_dir, transcript_path, session_id)
+    title = parse_session(cairn_dir, transcript_path, session_id)
 """
 import json
 import re
@@ -44,6 +44,21 @@ def _load_entries(path: Path) -> list[dict]:
             except json.JSONDecodeError:
                 continue
     return entries
+
+
+def _extract_ai_title(entries: list[dict]) -> str | None:
+    # Claude Code writes an "ai-title" record into the transcript whenever it
+    # (re)generates the session's title (the same text shown in the terminal
+    # header / resume picker) - a session can have several as the title gets
+    # revised, so the last one in file order is the current title.
+    title = None
+    for entry in entries:
+        if entry.get("type") != "ai-title":
+            continue
+        ai_title = entry.get("aiTitle")
+        if ai_title:
+            title = ai_title
+    return title
 
 
 def build_agent_map(main_entries: list[dict]) -> dict[str, str]:
@@ -134,7 +149,7 @@ def parse_transcript(entries: list[dict], *, session_id: str, agent: str, conn) 
             )
 
 
-def parse_session(cairn_dir: Path, transcript_path: Path, session_id: str) -> None:
+def parse_session(cairn_dir: Path, transcript_path: Path, session_id: str) -> str | None:
     transcript_path = Path(transcript_path)
     conn = db.connect(Path(cairn_dir))
     try:
@@ -150,6 +165,14 @@ def parse_session(cairn_dir: Path, transcript_path: Path, session_id: str) -> No
                 sub_entries = _load_entries(subagent_path)
                 parse_transcript(sub_entries, session_id=session_id, agent=agent_name, conn=conn)
 
+        title = _extract_ai_title(main_entries)
+        if title:
+            # Skip the save entirely when this pass found no title, so a
+            # previously saved label (from an earlier pass that did) is
+            # never wiped out by one that didn't.
+            db.save_session_label(conn, session_id=session_id, label=title)
+
         conn.commit()
+        return title
     finally:
         conn.close()

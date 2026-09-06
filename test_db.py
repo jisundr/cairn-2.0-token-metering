@@ -173,6 +173,39 @@ def test_insert_tool_use_round_trips_non_null_detail(tmp_path):
     assert row == ("cairn:start",)
 
 
+def test_save_session_label_round_trips(tmp_path):
+    conn = db.connect(tmp_path / ".cairn")
+    db.save_session_label(conn, session_id="sess-1", label="Add a login page")
+    conn.commit()
+
+    row = conn.execute("SELECT label FROM session_labels WHERE session_id = 'sess-1'").fetchone()
+    assert row == ("Add a login page",)
+
+
+def test_save_session_label_replaces_existing_label_for_same_session_id(tmp_path):
+    conn = db.connect(tmp_path / ".cairn")
+    db.save_session_label(conn, session_id="sess-1", label="First title")
+    db.save_session_label(conn, session_id="sess-1", label="Revised title")
+    conn.commit()
+
+    rows = conn.execute("SELECT label FROM session_labels WHERE session_id = 'sess-1'").fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == "Revised title"
+
+
+def test_save_session_label_keys_by_session_id_independently(tmp_path):
+    conn = db.connect(tmp_path / ".cairn")
+    db.save_session_label(conn, session_id="sess-1", label="Session one")
+    db.save_session_label(conn, session_id="sess-2", label="Session two")
+    conn.commit()
+
+    rows = {
+        row[0]: row[1]
+        for row in conn.execute("SELECT session_id, label FROM session_labels")
+    }
+    assert rows == {"sess-1": "Session one", "sess-2": "Session two"}
+
+
 def test_insert_tool_use_dedupes_on_tool_use_id(tmp_path):
     conn = db.connect(tmp_path / ".cairn")
     db.insert_tool_use(conn, **make_tool_use())
