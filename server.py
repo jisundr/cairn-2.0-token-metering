@@ -313,11 +313,15 @@ def rollup_timeseries(rows: list[dict], since: str, until: str, bucket: str) -> 
     return points
 
 
-def rollup_sessions(calls: list[dict], events: list[dict]) -> list[dict]:
+def rollup_sessions(calls: list[dict], events: list[dict], labels: dict[str, str] | None = None) -> list[dict]:
     """One row per (project, session_id), most recently started first.
     `usage_limit_hit` cross-references `usage_limit_events` distinctly -
-    it is never folded into the token/cost totals here.
+    it is never folded into the token/cost totals here. `labels` (keyed by
+    session_id, from `db.py`'s `session_labels` table) is optional and may
+    omit a session entirely - such a session's `label` just comes through
+    empty rather than erroring.
     """
+    labels = labels or {}
     limited = {(e["project"], e["session_id"]) for e in events}
     sessions = defaultdict(list)
     for row in calls:
@@ -337,18 +341,21 @@ def rollup_sessions(calls: list[dict], events: list[dict]) -> list[dict]:
                 "tokens": sum(_total_tokens(r) for r in group_rows),
                 "cost": pricing.group_cost(group_rows),
                 "usage_limit_hit": (project_label, session_id) in limited,
+                "label": labels.get(session_id, ""),
             }
         )
     result.sort(key=lambda s: s["started"], reverse=True)
     return result
 
 
-def build_session_trace(session_id: str, calls: list[dict]) -> dict | None:
+def build_session_trace(session_id: str, calls: list[dict], label: str | None = None) -> dict | None:
     """Agent groups (ordered by each agent's first call), each with its
     calls in chronological order. A call's `duration_seconds` is the gap
     to the next call by the *same agent* in this session (there being no
     captured call duration) - the last call in each agent's sequence has
     no next call, so it's None. Returns None if the session has no calls.
+    `label` (from `db.py`'s `session_labels` table) is optional and comes
+    through empty when the session has no saved label yet.
     """
     if not calls:
         return None
@@ -398,6 +405,7 @@ def build_session_trace(session_id: str, calls: list[dict]) -> dict | None:
         "started": calls[0]["timestamp"],
         "ended": calls[-1]["timestamp"],
         "agents": agents_out,
+        "label": label or "",
     }
 
 
@@ -407,7 +415,11 @@ def build_session_trace(session_id: str, calls: list[dict]) -> dict | None:
 
 
 def encode_project_path(root: Path) -> str:
-    return str(Path(root).resolve()).replace("/", "-")
+    # Claude Code swaps both "/" and "." for "-" when deriving a project's
+    # folder name under ~/.claude/projects/ - a path segment with a dot in it
+    # (e.g. this repo's own "cairn-2.0") otherwise encodes to the wrong
+    # folder name, so its transcripts are never found.
+    return str(Path(root).resolve()).replace("/", "-").replace(".", "-")
 
 
 def transcript_path_for(claude_projects_dir: Path, project_root: Path, session_id: str) -> Path:
@@ -621,6 +633,24 @@ class TokenMeteringApp:
     def _fetch_usage_limit_events(self, projects, since=None, until=None) -> list[dict]:
         return self._fetch_table(projects, "usage_limit_events", since=since, until=until)
 
+    def _fetch_session_labels(self, projects: list[Project]) -> dict[str, str]:
+        """Every saved label across `projects`, keyed by session_id. A
+        project whose db predates `session_labels` (or has none saved yet)
+        just contributes nothing here, per `_open_readonly`'s cold-start
+        handling - never an error.
+        """
+        labels: dict[str, str] = {}
+        for project in projects:
+            conn = _open_readonly(project.db_path, "session_labels")
+            if conn is None:
+                continue
+            try:
+                for row in conn.execute("SELECT session_id, label FROM session_labels"):
+                    labels[row["session_id"]] = row["label"]
+            finally:
+                conn.close()
+        return labels
+
     def _ranged_calls(self, range_key: str, project_filter: str | None) -> list[dict]:
         projects = _filter_projects(self.projects(), project_filter)
         since, until = range_bounds(range_key)
@@ -716,12 +746,14 @@ class TokenMeteringApp:
         since, until = range_bounds(range_key)
         calls = self._fetch_calls(projects, since=since, until=until)
         events = self._fetch_usage_limit_events(projects, since=since, until=until)
-        return rollup_sessions(calls, events)
+        labels = self._fetch_session_labels(projects)
+        return rollup_sessions(calls, events, labels)
 
     def session_trace(self, session_id: str, project_filter: str | None = None) -> dict | None:
         projects = _filter_projects(self.projects(), project_filter)
         calls = self._fetch_session_calls(projects, session_id)
-        return build_session_trace(session_id, calls)
+        labels = self._fetch_session_labels(projects)
+        return build_session_trace(session_id, calls, labels.get(session_id))
 
     def call_detail(self, session_id: str, n: int, project_filter: str | None = None) -> dict | None:
         projects = _filter_projects(self.projects(), project_filter)

@@ -2,7 +2,7 @@
 """SQLite store for cairn's token-metering feature. stdlib only.
 
 Usage:
-    from db import connect, insert_call, insert_usage_limit_event, insert_tool_use
+    from db import connect, insert_call, insert_usage_limit_event, insert_tool_use, save_session_label
     conn = connect(cairn_dir)   # opens/creates cairn_dir/tokens.db with tables
 """
 import sqlite3
@@ -46,6 +46,14 @@ CREATE TABLE IF NOT EXISTS tool_uses (
 )
 """
 
+SESSION_LABELS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS session_labels (
+    session_id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
+"""
+
 CALLS_SESSION_INDEX = "CREATE INDEX IF NOT EXISTS idx_calls_session_id ON calls (session_id)"
 CALLS_TIMESTAMP_INDEX = "CREATE INDEX IF NOT EXISTS idx_calls_timestamp_trunc ON calls (substr(timestamp, 1, 19))"
 TOOL_USES_SESSION_INDEX = "CREATE INDEX IF NOT EXISTS idx_tool_uses_session_id ON tool_uses (session_id)"
@@ -64,6 +72,7 @@ def connect(cairn_dir: Path) -> sqlite3.Connection:
     conn.execute(CALLS_SCHEMA)
     conn.execute(USAGE_LIMIT_EVENTS_SCHEMA)
     conn.execute(TOOL_USES_SCHEMA)
+    conn.execute(SESSION_LABELS_SCHEMA)
     conn.execute(CALLS_SESSION_INDEX)
     conn.execute(CALLS_TIMESTAMP_INDEX)
     conn.execute(TOOL_USES_SESSION_INDEX)
@@ -119,4 +128,19 @@ def insert_tool_use(conn, *, tool_use_id, request_id, session_id, agent, tool_na
         "(tool_use_id, request_id, session_id, agent, tool_name, detail, timestamp) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (tool_use_id, request_id, session_id, agent, tool_name, detail, timestamp),
+    )
+
+
+def save_session_label(conn, *, session_id, label):
+    """Upserts `label` for `session_id`, replacing whatever was stored
+    before (a session's title can be revised - see parser.py's
+    `_extract_ai_title`). Callers only invoke this when a title was
+    actually found, so a session with no title this pass keeps its
+    previously saved label rather than having it wiped.
+    """
+    conn.execute(
+        "INSERT INTO session_labels (session_id, label, updated_at) "
+        "VALUES (?, ?, CURRENT_TIMESTAMP) "
+        "ON CONFLICT(session_id) DO UPDATE SET label = excluded.label, updated_at = excluded.updated_at",
+        (session_id, label),
     )
