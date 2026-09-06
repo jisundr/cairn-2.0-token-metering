@@ -25,6 +25,10 @@ import server  # noqa: E402
 
 SESSION_MAIN = "e2e-session-main"
 SESSION_OTHER = "e2e-session-other"
+# SESSION_MAIN has a saved title (parser.py's "ai-title" extraction, seeded
+# directly here rather than via a transcript record); SESSION_OTHER is left
+# without one so its row/header still exercise the short-id fallback.
+SESSION_MAIN_LABEL = "Add a login page to the app"
 AVAILABLE_REQUEST_ID = "req-available-1"
 UNAVAILABLE_REQUEST_ID = "req-unavailable-2"
 LONG_SUBAGENT_NAME = "cairn:planner"
@@ -187,6 +191,7 @@ def seed_db(project_root: Path, now: datetime) -> None:
         timestamp=iso(now - timedelta(hours=1, minutes=45)),
         raw_entry=json.dumps({"isApiErrorMessage": True}),
     )
+    db.save_session_label(conn, session_id=SESSION_MAIN, label=SESSION_MAIN_LABEL)
     conn.commit()
     conn.close()
 

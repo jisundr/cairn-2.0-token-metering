@@ -70,6 +70,9 @@ test.describe("formatTimeOfDay/formatStarted render local time, not UTC", () => 
     );
 
     await page.goto("/");
+    // SessionsTable lives under the Sessions tab (dashboard-fixup plan.md's
+    // Actionables 2-3); the app defaults to the Dashboard tab.
+    await page.getByTestId("app-tab-sessions").click();
 
     const row = page.getByTestId("session-row-tz-demo");
     await expect(row).toContainText("06/15 09:45");
