@@ -12,6 +12,7 @@
   --signal-soft: #ecdcb6;
   --signal-line: #a8631a;
   --ch1: #1a2233;
+  --ch1-soft: #dfe1e8;
   --ch2: #5c6478;
   --ch3: #838a9b;
   --ch4: #aeb2bd;
@@ -99,6 +100,7 @@
   --color-signal-soft: var(--signal-soft);
   --color-signal-line: var(--signal-line);
   --color-ch1: var(--ch1);
+  --color-ch1-soft: var(--ch1-soft);
   --color-ch2: var(--ch2);
   --color-ch3: var(--ch3);
   --color-ch4: var(--ch4);

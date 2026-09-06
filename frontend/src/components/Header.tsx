@@ -2,12 +2,21 @@ import { useEffect, useState } from "react";
 import { formatRelativeToNow } from "../lib/format";
 import { Button } from "./ui/button";
 
+export type DashboardTab = "dashboard" | "sessions";
+
 interface HeaderProps {
   lastUpdated: Date | null;
   onRefresh: () => void;
+  activeTab: DashboardTab;
+  onTabChange: (tab: DashboardTab) => void;
 }
 
-export function Header({ lastUpdated, onRefresh }: HeaderProps) {
+const APP_TABS: { value: DashboardTab; label: string }[] = [
+  { value: "dashboard", label: "Dashboard" },
+  { value: "sessions", label: "Sessions" },
+];
+
+export function Header({ lastUpdated, onRefresh, activeTab, onTabChange }: HeaderProps) {
   const [, forceTick] = useState(0);
 
   useEffect(() => {
@@ -17,22 +26,7 @@ export function Header({ lastUpdated, onRefresh }: HeaderProps) {
 
   return (
     <div className="mb-4.5">
-      {/* Fake browser-chrome bezel above the app content — traffic dots + a
-          static mono URL readout, per DESIGN.md's Layout section. Decorative
-          only; the URL text sources from the page's own origin rather than a
-          hardcoded placeholder. */}
-      <div className="-mx-7 -mt-6.5 mb-4 flex items-center gap-3.5 rounded-t-[5px] border-b border-(--paper-line) bg-(--bone-dim) px-3.5 py-2.5">
-        <div className="flex flex-none gap-1.5" aria-hidden="true">
-          <span className="h-1.75 w-1.75 rounded-full bg-(--ink-faint) opacity-55" />
-          <span className="h-1.75 w-1.75 rounded-full bg-(--ink-faint) opacity-55" />
-          <span className="h-1.75 w-1.75 rounded-full bg-(--ink-faint) opacity-55" />
-        </div>
-        <span className="font-mono max-w-80 flex-1 truncate rounded-[3px] border border-(--paper-line) bg-(--window) px-2.5 py-1 text-[11.5px] text-(--ink-soft)">
-          {window.location.host}
-        </span>
-      </div>
-
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-2.5">
           <div
             className="relative h-6.5 w-6.5 flex-none rounded-[3px] border-2 border-(--ink) before:absolute before:inset-y-[5px] before:left-1/2 before:w-0.5 before:-translate-x-1/2 before:bg-(--ink) before:content-[''] after:absolute after:inset-x-[5px] after:top-1/2 after:h-0.5 after:-translate-y-1/2 after:bg-(--ink) after:content-['']"
@@ -45,6 +39,37 @@ export function Header({ lastUpdated, onRefresh }: HeaderProps) {
             </span>
           </div>
         </div>
+
+        {/* App-level Dial Tabs (DESIGN.md's Dial Tabs, app-level variant):
+            a bordered --window segmented group, unselected segments in
+            --ink-soft, the selected segment getting a --signal-soft fill
+            plus an inset bottom box-shadow in --signal — distinct from
+            components/ui/tabs.tsx's solid-fill treatment, which stays
+            reserved for the chart-range Today/Daily/Monthly tabs. */}
+        <div
+          className="font-label flex overflow-hidden rounded-[3px] border border-(--paper-line) bg-(--window) text-[12px]"
+          data-testid="app-tabs"
+        >
+          {APP_TABS.map((tab, i) => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => onTabChange(tab.value)}
+              aria-pressed={activeTab === tab.value}
+              data-testid={`app-tab-${tab.value}`}
+              className={
+                "cursor-pointer border-0 px-4.5 py-2.25 font-semibold tracking-wide uppercase select-none " +
+                (i > 0 ? "border-l border-(--paper-line) " : "") +
+                (activeTab === tab.value
+                  ? "bg-(--signal-soft) text-(--ink) shadow-[inset_0_-3px_0_var(--signal)]"
+                  : "bg-transparent text-(--ink-soft)")
+              }
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="font-label flex items-center gap-2.5 text-[11.5px] text-(--ink-soft)">
           {/* Pulsing status lamp (DESIGN.md's status-cluster) — a ring in
               --signal-soft expanding around the solid --signal dot, built from

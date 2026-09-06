@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { RangeKey, SessionSummary } from "../api/types";
-import { formatCost, formatStarted } from "../lib/format";
+import { formatCost, formatStarted, shortId } from "../lib/format";
 import { cn } from "../lib/utils";
 
 interface SessionsTableProps {
@@ -96,7 +96,7 @@ export function SessionsTable({
                   <Td>
                     {selected && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-[1px] bg-(--signal)" />}
                     {s.usage_limit_hit && <span className="mr-1.5 inline-block h-1.75 w-1.75 rounded-full bg-(--signal)" />}
-                    {s.session_id}
+                    {s.label || shortId(s.session_id)}
                   </Td>
                   {multiProject && <Td>{s.project}</Td>}
                   <Td mono>{s.agents.length}</Td>

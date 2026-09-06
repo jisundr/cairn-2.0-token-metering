@@ -74,6 +74,7 @@ export interface SessionSummary {
   tokens: number;
   cost: number | null;
   usage_limit_hit: boolean;
+  label?: string;
 }
 
 export interface UsageLimitEvent {
@@ -112,6 +113,7 @@ export interface SessionTrace {
   started: string;
   ended: string;
   agents: AgentTrace[];
+  label?: string;
 }
 
 export interface CallDetail {
