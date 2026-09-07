@@ -103,6 +103,9 @@ test.describe("formatTimeOfDay/formatStarted render local time, not UTC", () => 
 
     await page.goto("/");
     await page.getByTestId("app-tab-sessions").click();
+    // The drilldown lives on its own page now (plan.md's Actionable 7) -
+    // click the auto-selected session's row to open it.
+    await page.getByTestId("session-row-tz-demo").click();
 
     const turn = page.getByTestId("chat-turn-tz-demo-1");
     await expect(turn).toContainText("09:45:30");
@@ -149,14 +152,16 @@ async function mockHeatmap(page: import("@playwright/test").Page, rows: { timest
   );
 }
 
-test.describe("activity heatmap buckets by local day-of-week/hour, not UTC", () => {
+test.describe("activity heatmap buckets by local calendar day, not UTC", () => {
   test.use({ timezoneId: "America/New_York" });
 
-  test("a DST spring-forward transition buckets each side into the correct local hour", async ({ page }) => {
+  test("a DST spring-forward transition still buckets both calls into the same local day", async ({ page }) => {
     // 2024-03-10: US spring-forward. At 07:00 UTC, EST (UTC-5) becomes EDT
-    // (UTC-4) - local 2am never occurs that day. A UTC-bucket-shift
-    // approach can't get this right without knowing the DST rule itself;
-    // a real per-row Date does, for free.
+    // (UTC-4) - local 2am never occurs that day. The heatmap only buckets
+    // by calendar day now (Actionable 3) - a real per-row Date's local
+    // getters place both calls in the same March-10 cell regardless, no
+    // manual DST-rule handling needed.
+    await page.clock.setFixedTime(new Date("2024-03-10T12:00:00Z"));
     await mockHeatmap(page, [
       { timestamp: "2024-03-10T06:59:00Z", tokens: 500 }, // 01:59 EST
       { timestamp: "2024-03-10T07:01:00Z", tokens: 700 }, // 03:01 EDT
@@ -165,43 +170,49 @@ test.describe("activity heatmap buckets by local day-of-week/hour, not UTC", () 
     await page.goto("/");
     await expect(page.getByTestId("activity-heatmap")).toBeVisible();
 
-    await expect(page.getByTestId("heatmap-tooltip-6-1")).toContainText("Sun 1:00");
-    await expect(page.getByTestId("heatmap-tooltip-6-1")).toContainText("1 calls");
-    await expect(page.getByTestId("heatmap-tooltip-6-1")).toContainText("500 tokens");
-    await expect(page.getByTestId("heatmap-tooltip-6-2")).toHaveCount(0);
-    await expect(page.getByTestId("heatmap-tooltip-6-3")).toContainText("Sun 3:00");
-    await expect(page.getByTestId("heatmap-tooltip-6-3")).toContainText("1 calls");
-    await expect(page.getByTestId("heatmap-tooltip-6-3")).toContainText("700 tokens");
+    const tooltip = page.getByTestId("heatmap-tooltip-2024-03-10");
+    await expect(tooltip).toContainText("03-10");
+    await expect(tooltip).toContainText("2 calls");
+    await expect(tooltip).toContainText("1.2k tokens");
   });
 
-  test("a DST fall-back transition buckets both sides of the repeated hour together", async ({ page }) => {
+  test("a DST fall-back transition buckets both sides of the repeated local hour into one day", async ({ page }) => {
     // 2024-11-03: US fall-back. Local 1:00-1:59am occurs twice (as EDT,
-    // then again as EST) - two calls an hour apart in UTC both land in the
-    // same local hour=1 bucket.
+    // then again as EST) - two calls an hour apart in UTC still land in
+    // the same local calendar-day cell.
+    await page.clock.setFixedTime(new Date("2024-11-03T12:00:00Z"));
     await mockHeatmap(page, [
       { timestamp: "2024-11-03T05:30:00Z", tokens: 300 }, // 01:30 EDT
       { timestamp: "2024-11-03T06:30:00Z", tokens: 400 }, // 01:30 EST
     ]);
 
     await page.goto("/");
-    await expect(page.getByTestId("heatmap-tooltip-6-1")).toContainText("Sun 1:00");
-    await expect(page.getByTestId("heatmap-tooltip-6-1")).toContainText("2 calls");
+    const tooltip = page.getByTestId("heatmap-tooltip-2024-11-03");
+    await expect(tooltip).toContainText("2 calls");
+    await expect(tooltip).toContainText("700 tokens");
   });
 });
 
-test.describe("activity heatmap buckets by local calendar day, not UTC", () => {
+test.describe("activity heatmap buckets by local calendar day, not the UTC one", () => {
   test.use({ timezoneId: "Pacific/Honolulu" }); // fixed UTC-10, no DST.
 
   test("a call crosses the local calendar-day boundary relative to its UTC day", async ({ page }) => {
-    // 2026-01-05T05:00:00Z is Monday in UTC, but Sunday 19:00 in Honolulu.
+    // Frozen "now" is 2026-01-05T12:00:00Z - Monday in UTC, but still
+    // 2026-01-05 02:00 in Honolulu (UTC-10), so "today" is the same local
+    // date either way. The seeded call, 2026-01-05T05:00:00Z, is also
+    // Monday in UTC but Sunday 19:00 in Honolulu - a different local date
+    // from "today".
+    await page.clock.setFixedTime(new Date("2026-01-05T12:00:00Z"));
     await mockHeatmap(page, [{ timestamp: "2026-01-05T05:00:00Z", tokens: 250 }]);
 
     await page.goto("/");
 
-    await expect(page.getByTestId("heatmap-tooltip-6-19")).toContainText("Sun 19:00");
-    await expect(page.getByTestId("heatmap-tooltip-6-19")).toContainText("1 calls");
-    // The naive UTC-day cell (Mon 05:00) must stay empty - proves bucketing
-    // used the local day, not the UTC one.
-    await expect(page.getByTestId("heatmap-tooltip-0-5")).toHaveCount(0);
+    const tooltip = page.getByTestId("heatmap-tooltip-2026-01-04");
+    await expect(tooltip).toContainText("01-04");
+    await expect(tooltip).toContainText("1 calls");
+    await expect(tooltip).toContainText("250 tokens");
+    // The naive UTC-day cell (2026-01-05) must stay empty - proves
+    // bucketing used the local day, not the UTC one.
+    await expect(page.getByTestId("heatmap-tooltip-2026-01-05")).toHaveCount(0);
   });
 });

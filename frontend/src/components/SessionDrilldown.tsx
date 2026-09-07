@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useRef, useState } from "react";
 import { useCallDetails, useSessionTrace } from "../api/hooks";
 import type { CallDetail, SessionSummary, TraceCall } from "../api/types";
 import { formatCost, formatDuration, formatTimeOfDay, formatTokens, shortId } from "../lib/format";
@@ -112,16 +113,16 @@ function buildAgentTurns(
   return turns;
 }
 
-// Checkbox-driven agent-select rows (DESIGN.md's "Agent-select rows") above
-// one always-visible, turn-grouped chat thread merging every agent's calls
-// (DESIGN.md's "Chat thread") - replaces the former per-agent click-to-expand
-// accordion + trace table. Checking an agent dims (not removes) every other
-// agent's turns in the thread below.
+// A stacked share bar (session-total token share per agent) whose segments
+// double as the legend rows below it - the legend's click-to-select drives
+// the dim/highlight-other-agents behavior in the chat thread. Replaces the
+// former per-agent click-to-expand accordion + trace table; a legend click
+// dims (not removes) every other agent's turns in the thread below.
 export function SessionDrilldown({ session, project }: SessionDrilldownProps) {
   const { data: trace } = useSessionTrace(session.session_id, project);
   const [checkedAgents, setCheckedAgents] = useState<Set<string>>(new Set());
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const maxTokens = trace ? Math.max(...trace.agents.map((a) => a.tokens), 1) : 1;
   const totalTokens = trace ? trace.agents.reduce((sum, a) => sum + a.tokens, 0) : 0;
   // The token-dominant agent is where session cost is concentrated, so it's
   // called out in the head line even though nothing auto-expands anymore.
@@ -146,17 +147,6 @@ export function SessionDrilldown({ session, project }: SessionDrilldownProps) {
     project,
   );
 
-  if (!trace) return null;
-
-  function toggleAgent(name: string) {
-    setCheckedAgents((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  }
-
   const detailByPosition = new Map<number, { detail: CallDetail | undefined; isLoading: boolean }>();
   mergedCalls.forEach((m, i) => {
     detailByPosition.set(m.call.global_position, {
@@ -175,9 +165,29 @@ export function SessionDrilldown({ session, project }: SessionDrilldownProps) {
     .flatMap(({ agent, name, channelColor }) => buildAgentTurns(name, channelColor, agent.trace, detailByPosition))
     .sort((a, b) => a.firstGlobalPosition - b.firstGlobalPosition);
 
+  // Windowed rendering: chat-thread's turns vary from one bubble to several
+  // tool-action lines, so item size is measured per-turn rather than fixed.
+  const rowVirtualizer = useVirtualizer({
+    count: turns.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 160,
+    overscan: 5,
+  });
+
+  function toggleAgent(name: string) {
+    setCheckedAgents((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  if (!trace) return null;
+
   return (
-    <div className="rounded-lg border border-(--border) bg-(--surface)" data-testid="session-drilldown">
-      <div className="flex flex-wrap items-baseline gap-2.5 rounded-t-lg border-b border-(--border) bg-(--surface-muted) px-4.5 py-3.5">
+    <div className="flex h-full min-h-0 flex-col rounded-lg border border-(--border) bg-(--surface)" data-testid="session-drilldown">
+      <div className="flex flex-none flex-wrap items-baseline gap-2.5 rounded-t-lg border-b border-(--border) bg-(--surface-muted) px-4.5 py-3.5">
         <span className="text-[13px] font-bold">{session.label || `Session ${shortId(session.session_id)}`}</span>
         <span className="font-mono text-[11.5px] text-(--ink-soft)">
           {formatSessionDuration(trace.started, trace.ended)} runtime
@@ -185,7 +195,11 @@ export function SessionDrilldown({ session, project }: SessionDrilldownProps) {
         </span>
       </div>
 
-      <div className="border-b border-(--border)" data-testid="agent-select-list">
+      <div className="flex-none px-4.5 pt-3.5">
+        <AgentShareBar agents={agentsWithColor.map(({ agent, name, channelColor }) => ({ name, channelColor, tokens: agent.tokens }))} totalTokens={totalTokens} />
+      </div>
+
+      <div className="flex-none border-b border-(--border)" data-testid="agent-select-list">
         {agentsWithColor.map(({ agent, name, channelColor }) => (
           <AgentSelectRow
             key={name}
@@ -193,7 +207,6 @@ export function SessionDrilldown({ session, project }: SessionDrilldownProps) {
             tokens={agent.tokens}
             cost={agent.cost}
             name={name}
-            maxTokens={maxTokens}
             channelColor={channelColor}
             checked={checkedAgents.has(name)}
             onToggle={() => toggleAgent(name)}
@@ -202,31 +215,90 @@ export function SessionDrilldown({ session, project }: SessionDrilldownProps) {
       </div>
 
       <div
-        className="mx-4.5 my-2.5 rounded-md border border-(--border) bg-(--surface-muted) px-4.5 pt-4 pb-1"
+        className="mx-4.5 my-2.5 flex min-h-0 flex-1 flex-col rounded-md border border-(--border) bg-(--surface-muted)"
         data-testid="chat-thread"
       >
-        <div className="mb-4 text-[10px] font-semibold tracking-wide text-(--ink-soft) uppercase">
-          full transcript — check an agent above to highlight its calls
+        <div className="flex-none px-4.5 pt-4 pb-2 text-[10px] font-semibold tracking-wide text-(--ink-soft) uppercase">
+          full transcript — select an agent above to highlight its calls
         </div>
-        {turns.map((turn) => (
-          <ChatTurn
-            key={turn.key}
-            sessionId={session.session_id}
-            turn={turn}
-            dimmed={checkedAgents.size > 0 && !checkedAgents.has(turn.agentName)}
-          />
-        ))}
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4.5 pb-1">
+          <div style={{ height: rowVirtualizer.getTotalSize(), width: "100%", position: "relative" }}>
+            {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+              const turn = turns[virtualItem.index];
+              return (
+                <div
+                  key={turn.key}
+                  data-index={virtualItem.index}
+                  ref={rowVirtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualItem.start}px)`,
+                  }}
+                >
+                  <ChatTurn
+                    sessionId={session.session_id}
+                    turn={turn}
+                    dimmed={checkedAgents.size > 0 && !checkedAgents.has(turn.agentName)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
+// 100%-stacked bar of each agent's share of the session's *total* tokens
+// (not the top agent's tokens) - segment order matches agentsWithColor and
+// each agent's legend row below. Segments are hover-only; the legend row is
+// the click target (5b).
+function AgentShareBar({
+  agents,
+  totalTokens,
+}: {
+  agents: { name: string; channelColor: string; tokens: number }[];
+  totalTokens: number;
+}) {
+  return (
+    <div className="flex h-3 w-full overflow-hidden rounded-[3px]" data-testid="agent-share-bar">
+      {agents.map(({ name, channelColor, tokens }) => {
+        const pct = totalTokens > 0 ? (tokens / totalTokens) * 100 : 0;
+        return (
+          <div
+            key={name}
+            className="group relative h-full"
+            style={{ width: `${pct}%`, backgroundColor: channelColor }}
+            data-testid={`agent-share-segment-${name}`}
+          >
+            <div
+              data-testid={`agent-share-tooltip-${name}`}
+              className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 hidden -translate-x-1/2 rounded-md border border-(--border) bg-(--surface) px-2 py-1.5 text-[11px] whitespace-nowrap text-(--ink) group-hover:block"
+            >
+              <div className="font-medium">{name}</div>
+              <div className="text-(--ink-soft) tabular-nums">
+                {formatTokens(tokens)} tok · {Math.round(pct)}%
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Legend row keyed to the matching AgentShareBar segment - the click target
+// that drives the chat thread's dim/highlight-other-agents behavior
+// (replaces the former checkbox row and its embedded mini-bar).
 function AgentSelectRow({
   name,
   calls,
   tokens,
   cost,
-  maxTokens,
   channelColor,
   checked,
   onToggle,
@@ -235,41 +307,25 @@ function AgentSelectRow({
   calls: number;
   tokens: number;
   cost: number | "unknown" | null;
-  maxTokens: number;
   channelColor: string;
   checked: boolean;
   onToggle: () => void;
 }) {
   const isSubagent = name !== "main";
-  const checkboxId = `agent-select-${name}`;
-  const pct = Math.round((tokens / maxTokens) * 100);
 
   return (
     <div className="border-b border-(--border-soft) last:border-b-0" data-testid={`agent-row-${name}`}>
-      <label
-        htmlFor={checkboxId}
+      <button
+        type="button"
+        aria-pressed={checked}
+        data-testid={`agent-select-${name}`}
+        onClick={onToggle}
         className={
-          "grid w-full cursor-pointer grid-cols-[18px_110px_1fr_90px_90px_70px] items-center gap-3 px-4.5 py-3 text-left text-[13px] " +
+          "grid w-full cursor-pointer grid-cols-[14px_110px_1fr] items-center gap-3 px-4.5 py-3 text-left text-[13px] " +
           (checked ? "bg-(--surface-muted)" : "bg-transparent")
         }
       >
-        <input
-          type="checkbox"
-          id={checkboxId}
-          data-testid={checkboxId}
-          checked={checked}
-          onChange={onToggle}
-          className="sr-only"
-        />
-        <span
-          aria-hidden="true"
-          className="h-2.25 w-2.25 shrink-0 rounded-[2px] border-[1.5px]"
-          style={
-            checked
-              ? { backgroundColor: channelColor, borderColor: channelColor }
-              : { backgroundColor: "transparent", borderColor: "var(--ink-faint)" }
-          }
-        />
+        <span aria-hidden="true" className="h-2.25 w-2.25 shrink-0 rounded-[2px]" style={{ backgroundColor: channelColor }} />
         <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold leading-tight">
           <span className="truncate">{name}</span>
           {isSubagent && (
@@ -278,16 +334,12 @@ function AgentSelectRow({
             </span>
           )}
         </span>
-        <div className="flex items-center gap-1.5" data-testid={`agent-mini-bar-${name}`}>
-          <div className="h-2 flex-1 overflow-hidden rounded-[2px] border border-(--border) bg-(--surface-muted)">
-            <div className="h-full" style={{ width: `${pct}%`, backgroundColor: channelColor }} />
-          </div>
-          <span className="w-8 flex-none text-right text-[10.5px] text-(--ink-faint) tabular-nums">{pct}%</span>
-        </div>
-        <span className="text-right text-[11.5px] text-(--ink-soft) tabular-nums">{calls} calls</span>
-        <span className="text-right text-[11.5px] text-(--ink-soft) tabular-nums">{formatTokens(tokens)} tok</span>
-        <span className="text-right text-[12px] font-bold tabular-nums">{formatCost(cost)}</span>
-      </label>
+        <span className="ml-auto flex items-center gap-3" data-testid={`agent-row-meta-${name}`}>
+          <span className="w-[62px] text-right text-[11.5px] text-(--ink-soft) tabular-nums">{calls} calls</span>
+          <span className="w-[72px] text-right text-[11.5px] text-(--ink-soft) tabular-nums">{formatTokens(tokens)} tok</span>
+          <span className="w-[62px] text-right text-[12px] font-bold tabular-nums">{formatCost(cost)}</span>
+        </span>
+      </button>
     </div>
   );
 }

@@ -19,9 +19,7 @@ export function WarningBanner({ events, onViewSession }: WarningBannerProps) {
       data-testid="usage-limit-banner"
       className="mb-5 flex items-center gap-3 rounded-lg border border-(--warn) bg-(--warn-soft) px-4 py-3 text-[13.5px]"
     >
-      <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full border border-(--warn) text-(--warn)">
-        <AlertTriangle size={12} strokeWidth={2.5} />
-      </span>
+      <AlertTriangle size={18} strokeWidth={2.5} className="flex-none text-(--warn)" />
       <span>
         <strong className="font-semibold">Usage limit hit</strong> {plural} — session{" "}
         <code className="font-mono rounded bg-(--surface) px-1 py-0.5">{mostRecent.session_id}</code>
