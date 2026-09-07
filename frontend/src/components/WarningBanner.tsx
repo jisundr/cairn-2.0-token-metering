@@ -26,7 +26,7 @@ export function WarningBanner({ events, onViewSession }: WarningBannerProps) {
         <strong className="font-semibold">Usage limit hit</strong> {plural} — session{" "}
         <code className="font-mono rounded bg-(--surface) px-1 py-0.5">{mostRecent.session_id}</code>
       </span>
-      <Badge>{events.length}</Badge>
+      <Badge className="bg-(--warn) text-(--warn-soft)">{events.length}</Badge>
       <button
         type="button"
         data-testid="usage-limit-view-session"
