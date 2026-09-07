@@ -3,10 +3,11 @@
 `.cairn/tokens.db` (via db.py's insert helpers, mirroring test_server.py's
 `make_project` fixture pattern) plus one transcript `.jsonl` under a
 scratch HOME so server.py's on-demand transcript lookup resolves
-"available" for exactly one call and "unavailable" for every other
-(plan.md's Actionable 5). Timestamps are relative to the run's current
-time, not hardcoded, since server.py's range windows are wall-clock-
-relative.
+"available" for two calls (`AVAILABLE_REQUEST_ID`'s text+tool_use reply,
+`PURE_TOOL_USE_REQUEST_ID`'s tool_use-only reply with no trailing text)
+and "unavailable" for every other (plan.md's Actionable 5). Timestamps are
+relative to the run's current time, not hardcoded, since server.py's range
+windows are wall-clock-relative.
 
 Usage: python3 seed.py <scratch_dir>
 `<scratch_dir>/project` becomes the project root passed to server.py;
@@ -31,6 +32,10 @@ SESSION_OTHER = "e2e-session-other"
 SESSION_MAIN_LABEL = "Add a login page to the app"
 AVAILABLE_REQUEST_ID = "req-available-1"
 UNAVAILABLE_REQUEST_ID = "req-unavailable-2"
+# Shares a transcript entry with a tool_use block and no text block at all -
+# exercises the "no dangling response bubble for a pure tool-use call" path
+# (Goal 5) that AVAILABLE_REQUEST_ID's text+tool_use reply doesn't cover.
+PURE_TOOL_USE_REQUEST_ID = "req-3"
 LONG_SUBAGENT_NAME = "cairn:planner"
 
 # Extra plain (non-Skill, non-mcp__) tool names beyond "Bash"/"Read", so the
@@ -87,7 +92,7 @@ def seed_db(project_root: Path, now: datetime) -> None:
             cache_read_tokens=200,
         ),
         dict(
-            request_id="req-3",
+            request_id=PURE_TOOL_USE_REQUEST_ID,
             session_id=SESSION_MAIN,
             agent="builder",
             model="claude-opus-5",
@@ -150,7 +155,7 @@ def seed_db(project_root: Path, now: datetime) -> None:
         ),
         dict(
             tool_use_id="tu-3",
-            request_id="req-3",
+            request_id=PURE_TOOL_USE_REQUEST_ID,
             session_id=SESSION_MAIN,
             agent="builder",
             tool_name="Skill",
@@ -201,18 +206,34 @@ def seed_transcript(scratch: Path, project_root: Path) -> None:
     transcript_path = server.transcript_path_for(claude_projects_dir, project_root, SESSION_MAIN)
     transcript_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # The preceding entry (no requestId) is the real prompt; the entry
-    # carrying `requestId` is the API call itself - server.py's
-    # `_extract_call_content` walks backward from the first entry sharing
-    # `requestId` to find it. `UNAVAILABLE_REQUEST_ID` has no entry here at
-    # all, so it naturally resolves "unavailable".
+    # The preceding entry (no requestId) is the real prompt; each entry
+    # carrying a `requestId` is one API call - server.py's
+    # `_extract_call_content` walks backward from the first entry sharing a
+    # given `requestId` to find its prompt. `UNAVAILABLE_REQUEST_ID` has no
+    # entry here at all, so it naturally resolves "unavailable".
+    # `PURE_TOOL_USE_REQUEST_ID`'s entry carries a tool_use block and no text
+    # block at all, so its `response` resolves to "" - the case
+    # `SessionDrilldown.tsx`'s `ChatTurn` must never render a dangling empty
+    # response bubble for (Goal 5).
     entries = [
         {"message": {"role": "user", "content": "Add a login page to the app."}},
         {
             "requestId": AVAILABLE_REQUEST_ID,
             "message": {
                 "role": "assistant",
-                "content": [{"type": "text", "text": "Sure — adding a login page now."}],
+                "content": [
+                    {"type": "tool_use", "id": "tu-available-1", "name": "Read", "input": {"file_path": "src/login.py"}},
+                    {"type": "text", "text": "Sure — adding a login page now."},
+                ],
+            },
+        },
+        {
+            "requestId": PURE_TOOL_USE_REQUEST_ID,
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "id": "tu-req3-1", "name": "Bash", "input": {"command": "npm test"}},
+                ],
             },
         },
     ]

@@ -134,6 +134,7 @@ export interface CallDetail {
   available: boolean;
   prompt: string | null;
   response: string | null;
+  tool_calls: { name: string; summary: string }[];
 }
 
 export interface ApiError {

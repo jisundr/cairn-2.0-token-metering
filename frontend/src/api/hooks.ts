@@ -109,19 +109,8 @@ export function useSessionTrace(sessionId: string | null, project?: string) {
   });
 }
 
-export function useCallDetail(sessionId: string | null, n: number | null, project?: string) {
-  return useQuery({
-    queryKey: ["call-detail", sessionId, n, project ?? "all"],
-    queryFn: () => api.callDetail(sessionId as string, n as number, project),
-    enabled: sessionId !== null && n !== null,
-    retry: (failureCount, error) => !(error instanceof ApiNotFoundError) && failureCount < 2,
-  });
-}
-
 // Batched per-call detail for SessionDrilldown's chat-thread: one query per
-// `global_position`, sharing useCallDetail's own cache entries (same query
-// key shape) so opening the trace drawer for a call already rendered in the
-// thread doesn't refetch it. Order of the returned results matches `positions`.
+// `global_position`. Order of the returned results matches `positions`.
 export function useCallDetails(sessionId: string | null, positions: number[], project?: string) {
   return useQueries({
     queries: positions.map((n) => ({

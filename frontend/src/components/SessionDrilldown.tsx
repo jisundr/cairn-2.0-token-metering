@@ -6,7 +6,6 @@ import { formatCost, formatDuration, formatTimeOfDay, formatTokens, shortId } fr
 interface SessionDrilldownProps {
   session: SessionSummary;
   project?: string;
-  onOpenCall: (sessionId: string, position: number) => void;
 }
 
 // Session-total runtime, not a per-call duration - mm:ss/h:mm reads better
@@ -23,18 +22,102 @@ function formatSessionDuration(startIso: string, endIso: string): string {
 
 const CHANNEL_COLORS = ["var(--ch1)", "var(--ch2)", "var(--ch3)", "var(--ch4)"];
 
+// Compact verb per tool name for inline action lines - falls back to the
+// bare tool name for anything unmapped.
+const TOOL_ACTION_VERB: Record<string, string> = {
+  Write: "Edited",
+  Edit: "Edited",
+  Bash: "Ran",
+  Grep: "Searched",
+  Glob: "Searched",
+  WebFetch: "Fetched",
+  Task: "Dispatched",
+  Skill: "Invoked",
+};
+
+function toolActionLine(toolCall: { name: string; summary: string }): string {
+  const verb = TOOL_ACTION_VERB[toolCall.name] ?? toolCall.name;
+  return toolCall.summary ? `${verb} ${toolCall.summary}` : verb;
+}
+
 interface MergedCall {
   call: TraceCall;
   agentName: string;
   channelColor: string;
 }
 
+interface CallEntry extends MergedCall {
+  detail: CallDetail | undefined;
+  isLoading: boolean;
+}
+
+interface Turn {
+  key: string;
+  agentName: string;
+  channelColor: string;
+  firstGlobalPosition: number;
+  calls: CallEntry[];
+}
+
+// Groups one agent's own chronological calls into turns: consecutive calls
+// merge into the same turn only when both the current and immediately
+// preceding call's detail have loaded, are both available, and the current
+// call's prompt is non-empty and string-equals the previous one's - a
+// same-agent walk-back-to-the-same-prompt tool round trip. Anything else
+// (including an unavailable or still-loading call) starts a new turn -
+// fail safe, never guess.
+function buildAgentTurns(
+  agentName: string,
+  channelColor: string,
+  trace: TraceCall[],
+  detailByPosition: Map<number, { detail: CallDetail | undefined; isLoading: boolean }>,
+): Turn[] {
+  const turns: Turn[] = [];
+  let previous: CallEntry | null = null;
+
+  for (const call of trace) {
+    const found = detailByPosition.get(call.global_position);
+    const entry: CallEntry = {
+      call,
+      agentName,
+      channelColor,
+      detail: found?.detail,
+      isLoading: found?.isLoading ?? false,
+    };
+
+    const canMerge =
+      previous !== null &&
+      !previous.isLoading &&
+      !entry.isLoading &&
+      previous.detail?.available === true &&
+      entry.detail?.available === true &&
+      !!entry.detail.prompt &&
+      entry.detail.prompt === previous.detail.prompt;
+
+    if (canMerge) {
+      turns[turns.length - 1].calls.push(entry);
+    } else {
+      turns.push({
+        key: `${agentName}-${call.global_position}`,
+        agentName,
+        channelColor,
+        firstGlobalPosition: call.global_position,
+        calls: [entry],
+      });
+    }
+
+    previous = entry;
+  }
+
+  return turns;
+}
+
 // Checkbox-driven agent-select rows (DESIGN.md's "Agent-select rows") above
-// one always-visible, global_position-ordered chat-thread merging every
-// agent's calls (DESIGN.md's "Chat thread") - replaces the former per-agent
-// click-to-expand accordion + trace table. Checking an agent dims (not
-// removes) every other agent's turns in the thread below.
-export function SessionDrilldown({ session, project, onOpenCall }: SessionDrilldownProps) {
+// one always-visible, turn-grouped chat thread merging every agent's calls
+// (DESIGN.md's "Chat thread") - replaces the former per-agent click-to-expand
+// accordion + trace table. Checking an agent dims (not removes) every other
+// agent's turns in the thread below.
+export function SessionDrilldown({ session, project }: SessionDrilldownProps) {
   const { data: trace } = useSessionTrace(session.session_id, project);
   const [checkedAgents, setCheckedAgents] = useState<Set<string>>(new Set());
 
@@ -74,6 +157,24 @@ export function SessionDrilldown({ session, project, onOpenCall }: SessionDrilld
     });
   }
 
+  const detailByPosition = new Map<number, { detail: CallDetail | undefined; isLoading: boolean }>();
+  mergedCalls.forEach((m, i) => {
+    detailByPosition.set(m.call.global_position, {
+      detail: detailQueries[i]?.data,
+      isLoading: detailQueries[i]?.isLoading ?? false,
+    });
+  });
+
+  // Turn-group each agent using its own chronological trace order (never the
+  // merged global_position order - a subagent's calls come from a separate
+  // transcript file and can't share a turn with a different agent's call),
+  // then merge every agent's turns back into one sequence ordered by each
+  // turn's first call's global_position (today's single continuous
+  // merged-thread behavior).
+  const turns: Turn[] = agentsWithColor
+    .flatMap(({ agent, name, channelColor }) => buildAgentTurns(name, channelColor, agent.trace, detailByPosition))
+    .sort((a, b) => a.firstGlobalPosition - b.firstGlobalPosition);
+
   return (
     <div className="rounded-[4px] border border-(--paper-line) bg-(--window)" data-testid="session-drilldown">
       <div className="flex flex-wrap items-baseline gap-2.5 rounded-t-[3px] border-b border-(--paper-line) bg-(--bone-dim) px-4.5 py-3.5">
@@ -107,17 +208,12 @@ export function SessionDrilldown({ session, project, onOpenCall }: SessionDrilld
         <div className="font-label mb-4 text-[9.5px] font-bold tracking-wide text-(--ink-soft) uppercase">
           full transcript — check an agent above to highlight its calls
         </div>
-        {mergedCalls.map(({ call, agentName, channelColor }, i) => (
+        {turns.map((turn) => (
           <ChatTurn
-            key={call.request_id}
+            key={turn.key}
             sessionId={session.session_id}
-            call={call}
-            agentName={agentName}
-            channelColor={channelColor}
-            detail={detailQueries[i]?.data}
-            isLoading={detailQueries[i]?.isLoading ?? false}
-            dimmed={checkedAgents.size > 0 && !checkedAgents.has(agentName)}
-            onOpenCall={onOpenCall}
+            turn={turn}
+            dimmed={checkedAgents.size > 0 && !checkedAgents.has(turn.agentName)}
           />
         ))}
       </div>
@@ -197,32 +293,56 @@ function AgentSelectRow({
   );
 }
 
-function ChatTurn({
-  sessionId,
-  call,
-  agentName,
-  channelColor,
-  detail,
-  isLoading,
-  dimmed,
-  onOpenCall,
-}: {
-  sessionId: string;
-  call: TraceCall;
-  agentName: string;
-  channelColor: string;
-  detail: CallDetail | undefined;
-  isLoading: boolean;
-  dimmed: boolean;
-  onOpenCall: (sessionId: string, position: number) => void;
-}) {
+// One turn = one human prompt (rendered once) followed by every call the
+// turn's tool round trip produced, each with its own metadata line and
+// inline tool-action lines, then the turn's final text reply if it produced
+// one - no blank text bubble ever renders in place of a tool-only reply.
+function ChatTurn({ sessionId, turn, dimmed }: { sessionId: string; turn: Turn; dimmed: boolean }) {
+  const firstCall = turn.calls[0];
+  const lastCall = turn.calls[turn.calls.length - 1];
+  const finalResponse =
+    lastCall.detail && lastCall.detail.available ? (lastCall.detail.response ?? "") : "";
+
   return (
     <div
       className="border-l border-(--paper-line) pb-4 pl-3.5 transition-opacity duration-150 [&+&]:mt-4 [&+&]:border-t [&+&]:border-dashed [&+&]:border-(--paper-line) [&+&]:pt-4"
       style={{ opacity: dimmed ? 0.32 : 1 }}
-      data-testid={`chat-turn-${sessionId}-${call.global_position}`}
+      data-testid={`chat-turn-${sessionId}-${turn.firstGlobalPosition}`}
     >
-      <div className="font-mono mb-2.5 flex flex-wrap items-center gap-2 text-[10px] tabular-nums text-(--ink-soft)">
+      <ChatBubble role="prompt" align="left" isLoading={firstCall.isLoading} detail={firstCall.detail} field="prompt" />
+
+      {turn.calls.map((entry) => (
+        <CallMeta key={entry.call.request_id} entry={entry} />
+      ))}
+
+      {finalResponse && (
+        <div className="mb-2.5 ml-auto max-w-[80%] last:mb-0">
+          <span className="font-label mb-1 block text-right text-[9px] tracking-wide text-(--ink-faint) uppercase">
+            response
+          </span>
+          <div
+            className="rounded-[4px] border border-(--paper-line) px-3 py-2.5 text-[12px] whitespace-pre-wrap"
+            style={{ backgroundColor: "var(--ch1-soft)", borderColor: "var(--ch1-soft)" }}
+            data-testid="chat-bubble-response"
+          >
+            {finalResponse}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A single call's metadata line plus its inline tool-action lines - kept
+// visible per call (not hidden behind a detail view) even when several
+// calls share one turn.
+function CallMeta({ entry }: { entry: CallEntry }) {
+  const { call, agentName, channelColor, detail, isLoading } = entry;
+  const toolCalls = !isLoading && detail?.available ? detail.tool_calls : [];
+
+  return (
+    <div className="mb-2.5">
+      <div className="font-mono flex flex-wrap items-center gap-2 text-[10px] tabular-nums text-(--ink-soft)">
         <span className="font-label font-bold" style={{ color: channelColor }}>
           {agentName}
         </span>
@@ -231,18 +351,12 @@ function ChatTurn({
           {call.input_tokens.toLocaleString()} in / {call.output_tokens.toLocaleString()} out ·{" "}
           {formatCost(call.cost)} · {formatDuration(call.duration_seconds)}
         </span>
-        <button
-          type="button"
-          onClick={() => onOpenCall(sessionId, call.global_position)}
-          data-testid={`view-full-detail-${sessionId}-${call.global_position}`}
-          className="font-label ml-auto cursor-pointer border-0 border-b border-(--ink-faint) bg-transparent p-0 text-[9.5px] tracking-wide whitespace-nowrap text-(--ink-soft) uppercase"
-        >
-          view full detail
-        </button>
       </div>
-
-      <ChatBubble role="prompt" align="left" isLoading={isLoading} detail={detail} field="prompt" />
-      <ChatBubble role="response" align="right" isLoading={isLoading} detail={detail} field="response" />
+      {toolCalls.map((toolCall, i) => (
+        <div key={i} className="font-mono mt-1 pl-1 text-[11px] text-(--ink-soft)">
+          {toolActionLine(toolCall)}
+        </div>
+      ))}
     </div>
   );
 }
