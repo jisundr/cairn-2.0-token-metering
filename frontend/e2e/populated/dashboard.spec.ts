@@ -204,6 +204,28 @@ test.describe("populated dashboard", () => {
     expect(turnAgents).toEqual(["main", "builder", "builder", "reviewer", "cairn:planner"]);
   });
 
+  test("drilldown renders inline tool-action lines, with no dangling response bubble for a pure tool-use call", async ({
+    page,
+  }) => {
+    await openSessionsTab(page);
+
+    // main's turn (global_position 1, fixtures/seed.py's AVAILABLE_REQUEST_ID)
+    // has a transcript-available Read tool_use plus a text reply - "Read"
+    // must render bare (not "Edited", which only Write/Edit map to) with its
+    // file_path summary appended, and the turn's own text reply still shows.
+    const mainTurn = page.getByTestId("chat-turn-e2e-session-main-1");
+    await expect(mainTurn).toContainText("Read src/login.py");
+    await expect(mainTurn.getByTestId("chat-bubble-response")).toBeVisible();
+
+    // builder's second turn (global_position 3, fixtures/seed.py's
+    // PURE_TOOL_USE_REQUEST_ID) has a transcript-available tool_use block
+    // and no text block at all - its tool-action line still renders, but no
+    // empty/dangling response bubble ever appears in its place (Goal 5).
+    const pureToolUseTurn = page.getByTestId("chat-turn-e2e-session-main-3");
+    await expect(pureToolUseTurn).toContainText("Ran npm test");
+    await expect(pureToolUseTurn.getByTestId("chat-bubble-response")).toHaveCount(0);
+  });
+
   test("drilldown renders an unpriced call's cost as 'unknown' without crashing", async ({ page }) => {
     // e2e-session-other's one call is on "claude-haiku-4.5", which isn't a
     // key in prices.json (only "claude-haiku-4-5-20251001" is priced) - so

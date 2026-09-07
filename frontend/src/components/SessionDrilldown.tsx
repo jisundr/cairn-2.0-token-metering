@@ -25,7 +25,6 @@ const CHANNEL_COLORS = ["var(--ch1)", "var(--ch2)", "var(--ch3)", "var(--ch4)"];
 // Compact verb per tool name for inline action lines - falls back to the
 // bare tool name for anything unmapped.
 const TOOL_ACTION_VERB: Record<string, string> = {
-  Read: "Edited",
   Write: "Edited",
   Edit: "Edited",
   Bash: "Ran",
