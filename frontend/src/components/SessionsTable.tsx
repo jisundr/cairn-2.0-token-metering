@@ -94,7 +94,6 @@ export function SessionsTable({
                 >
                   <Td mono>{formatStarted(s.started)}</Td>
                   <Td>
-                    {selected && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-[1px] bg-(--accent)" />}
                     {s.usage_limit_hit && <span className="mr-1.5 inline-block h-1.75 w-1.75 rounded-full bg-(--warn)" />}
                     {s.label || shortId(s.session_id)}
                   </Td>
