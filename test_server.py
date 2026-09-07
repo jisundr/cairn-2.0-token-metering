@@ -704,6 +704,7 @@ def test_call_detail_transcript_unavailable_still_reports_correct_tokens_and_cos
     assert detail["available"] is False
     assert detail["prompt"] is None
     assert detail["response"] is None
+    assert detail["tool_calls"] == []
     assert detail["input_tokens"] == 1_000_000
     assert detail["cost"] == pytest.approx(2.00)
 
@@ -737,6 +738,7 @@ def test_call_detail_reads_prompt_and_response_from_transcript_when_present(tmp_
     assert detail["available"] is True
     assert detail["prompt"] == "What's the token total?"
     assert detail["response"] == "It's 300 tokens."
+    assert detail["tool_calls"] == []
 
 
 def test_extract_call_content_skips_tool_result_echo_to_find_the_real_prompt():
@@ -758,7 +760,46 @@ def test_extract_call_content_skips_tool_result_echo_to_find_the_real_prompt():
         },
     ]
 
-    assert server._extract_call_content(entries, "r2") == ("real question", "the answer")
+    assert server._extract_call_content(entries, "r2") == ("real question", "the answer", [])
+
+
+def test_extract_call_content_collects_tool_calls_with_per_tool_summary():
+    entries = [
+        {"type": "user", "message": {"role": "user", "content": "fix the bug"}},
+        {
+            "type": "assistant",
+            "requestId": "r1",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "/a/b.py"}},
+                    {"type": "tool_use", "id": "t2", "name": "Bash", "input": {"command": "pytest -q"}},
+                    {"type": "tool_use", "id": "t3", "name": "Grep", "input": {"pattern": "TODO"}},
+                    {"type": "tool_use", "id": "t4", "name": "WebFetch", "input": {"url": "https://example.com"}},
+                    {"type": "tool_use", "id": "t5", "name": "Task", "input": {"description": "investigate"}},
+                    {"type": "tool_use", "id": "t6", "name": "Skill", "input": {"skill": "cairn:shared"}},
+                    {"type": "tool_use", "id": "t7", "name": "SomeUnknownTool", "input": {"x": "y"}},
+                    {"type": "tool_use", "id": "t8", "name": "Write", "input": {}},
+                    {"type": "text", "text": "done"},
+                ],
+            },
+        },
+    ]
+
+    prompt, response, tool_calls = server._extract_call_content(entries, "r1")
+
+    assert prompt == "fix the bug"
+    assert response == "done"
+    assert tool_calls == [
+        {"name": "Read", "summary": "/a/b.py"},
+        {"name": "Bash", "summary": "pytest -q"},
+        {"name": "Grep", "summary": "TODO"},
+        {"name": "WebFetch", "summary": "https://example.com"},
+        {"name": "Task", "summary": "investigate"},
+        {"name": "Skill", "summary": "cairn:shared"},
+        {"name": "SomeUnknownTool", "summary": ""},
+        {"name": "Write", "summary": ""},
+    ]
 
 
 def test_call_detail_falls_back_to_subagent_transcript(tmp_path):

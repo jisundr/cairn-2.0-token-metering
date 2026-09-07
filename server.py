@@ -466,13 +466,42 @@ def _is_tool_result_only(content) -> bool:
     return all(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
 
 
-def _extract_call_content(entries: list[dict], request_id: str) -> tuple[str, str] | None:
-    """(prompt, response) for the entries sharing `request_id`, or None if
-    that request_id isn't present. `response` concatenates every text block
-    across all entries sharing the id (one call can span several entries -
-    see `parser.py`); `prompt` is the nearest preceding user-role entry.
+# Per-tool-name field to pull a short human-readable summary from a
+# tool_use block's `input`, mirroring parser.py's `detail = input.get("skill")
+# if name == "Skill"` pattern. Falls back to "" for unmapped tools or a
+# missing/non-string field.
+_TOOL_SUMMARY_FIELD = {
+    "Read": "file_path",
+    "Write": "file_path",
+    "Edit": "file_path",
+    "NotebookEdit": "file_path",
+    "Bash": "command",
+    "Grep": "pattern",
+    "Glob": "pattern",
+    "WebFetch": "url",
+    "Task": "description",
+    "Skill": "skill",
+}
+
+
+def _tool_use_summary(name, tool_input) -> str:
+    field = _TOOL_SUMMARY_FIELD.get(name)
+    if field is None or not isinstance(tool_input, dict):
+        return ""
+    value = tool_input.get(field)
+    return value if isinstance(value, str) else ""
+
+
+def _extract_call_content(entries: list[dict], request_id: str) -> tuple[str, str, list[dict]] | None:
+    """(prompt, response, tool_calls) for the entries sharing `request_id`,
+    or None if that request_id isn't present. `response` concatenates every
+    text block across all entries sharing the id (one call can span several
+    entries - see `parser.py`); `prompt` is the nearest preceding user-role
+    entry; `tool_calls` is one `{name, summary}` object per `tool_use` block,
+    in encounter order.
     """
     response_parts = []
+    tool_calls = []
     first_index = None
     for i, entry in enumerate(entries):
         if entry.get("requestId") != request_id:
@@ -485,8 +514,13 @@ def _extract_call_content(entries: list[dict], request_id: str) -> tuple[str, st
         content = message.get("content")
         if isinstance(content, list):
             for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "text":
                     response_parts.append(block.get("text", ""))
+                elif block.get("type") == "tool_use":
+                    name = block.get("name")
+                    tool_calls.append({"name": name, "summary": _tool_use_summary(name, block.get("input"))})
 
     if first_index is None:
         return None
@@ -503,29 +537,29 @@ def _extract_call_content(entries: list[dict], request_id: str) -> tuple[str, st
         prompt_text = _tool_result_text(content)
         break
 
-    return prompt_text, "\n".join(response_parts)
+    return prompt_text, "\n".join(response_parts), tool_calls
 
 
 def lookup_transcript_content(
     claude_projects_dir: Path, project_root: Path, session_id: str, request_id: str
-) -> tuple[str | None, str | None, bool]:
-    """(prompt, response, available). available=False (prompt/response
-    both None) if the transcript file is missing or doesn't contain this
-    request_id - never raises.
+) -> tuple[str | None, str | None, list[dict], bool]:
+    """(prompt, response, tool_calls, available). available=False
+    (prompt/response None, tool_calls []) if the transcript file is missing
+    or doesn't contain this request_id - never raises.
     """
     transcript_path = transcript_path_for(claude_projects_dir, project_root, session_id)
     found = _extract_call_content(_load_jsonl(transcript_path), request_id)
     if found is not None:
-        return found[0], found[1], True
+        return found[0], found[1], found[2], True
 
     subagents_dir = transcript_path.parent / transcript_path.stem / "subagents"
     if subagents_dir.is_dir():
         for subagent_path in sorted(subagents_dir.glob("agent-*.jsonl")):
             found = _extract_call_content(_load_jsonl(subagent_path), request_id)
             if found is not None:
-                return found[0], found[1], True
+                return found[0], found[1], found[2], True
 
-    return None, None, False
+    return None, None, [], False
 
 
 # --------------------------------------------------------------------------
@@ -767,9 +801,10 @@ class TokenMeteringApp:
         call = calls[n - 1]
         project = next((p for p in projects if p.label == call["project"]), None)
         prompt = response = None
+        tool_calls: list[dict] = []
         available = False
         if project is not None:
-            prompt, response, available = lookup_transcript_content(
+            prompt, response, tool_calls, available = lookup_transcript_content(
                 self.claude_projects_dir, project.root, session_id, call["request_id"]
             )
 
@@ -791,6 +826,7 @@ class TokenMeteringApp:
             "available": available,
             "prompt": prompt,
             "response": response,
+            "tool_calls": tool_calls,
         }
 
     # -- HTTP dispatch (thin layer over everything above) ----------------

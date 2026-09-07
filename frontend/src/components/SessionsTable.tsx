@@ -130,7 +130,7 @@ function FilterPill({
       data-testid={testId ?? `project-filter-${label}`}
       className={cn(
         "font-label cursor-pointer rounded-[3px] border border-(--paper-line) bg-(--window) px-3 py-1 text-[10.5px] tracking-wide text-(--ink-soft) uppercase select-none",
-        active && "border-(--signal) bg-(--signal) font-bold text-(--window)",
+        active && "border-(--signal) bg-(--signal) font-bold text-(--signal-ink)",
       )}
     >
       {label}

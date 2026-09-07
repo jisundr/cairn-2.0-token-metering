@@ -194,9 +194,12 @@ test.describe("populated dashboard", () => {
       await expect(page.getByTestId(`chat-turn-e2e-session-main-${globalPosition}`)).toBeVisible();
     }
 
-    // DOM order follows global_position, not agent grouping.
+    // DOM order follows global_position, not agent grouping. The agent-name
+    // label is `.font-label.font-bold`; the turn's own prompt-bubble label
+    // (also `.font-label`, but not bold) would otherwise collide with this
+    // selector.
     const turnAgents = await thread.locator("[data-testid^='chat-turn-']").evaluateAll((nodes) =>
-      nodes.map((n) => n.querySelector(".font-label")?.textContent),
+      nodes.map((n) => n.querySelector(".font-label.font-bold")?.textContent),
     );
     expect(turnAgents).toEqual(["main", "builder", "builder", "reviewer", "cairn:planner"]);
   });
@@ -280,19 +283,6 @@ test.describe("populated dashboard", () => {
     await expect(builderTurn).toHaveCSS("opacity", "1");
   });
 
-  test("opens the trace drawer with an available transcript", async ({ page }) => {
-    await openSessionsTab(page);
-    // main's only call (global_position 1) is the one seeded with an
-    // available transcript entry.
-    await page.getByTestId("view-full-detail-e2e-session-main-1").click();
-
-    const drawer = page.getByTestId("trace-drawer");
-    await expect(drawer).toBeVisible();
-    await expect(drawer.getByTestId("transcript-available")).toBeVisible();
-    await expect(drawer.getByTestId("trace-detail-prompt")).toContainText("Add a login page to the app.");
-    await expect(drawer.getByTestId("trace-detail-response")).toContainText("Sure — adding a login page now.");
-  });
-
   test("wraps a long subagent name's badge onto its own line, without overflowing the name column", async ({
     page,
   }) => {
@@ -350,59 +340,4 @@ test.describe("populated dashboard", () => {
     await expect(page.getByTestId("skill-rollup-more")).toHaveCount(0);
   });
 
-  test("opens the trace drawer with an unavailable transcript for a call with no transcript entry", async ({
-    page,
-  }) => {
-    await openSessionsTab(page);
-    // builder's first call (global_position 2) has no transcript entry.
-    await page.getByTestId("view-full-detail-e2e-session-main-2").click();
-
-    const drawer = page.getByTestId("trace-drawer");
-    await expect(drawer).toBeVisible();
-    await expect(drawer.getByTestId("transcript-unavailable")).toBeVisible();
-    await expect(drawer.getByTestId("transcript-unavailable")).toContainText("Transcript unavailable");
-  });
-
-  test("drawer's full-page link navigates to the standalone call page, in-app", async ({ page }) => {
-    await openSessionsTab(page);
-    await page.getByTestId("view-full-detail-e2e-session-main-1").click();
-    await page.getByTestId("trace-drawer-fullpage-link").click();
-
-    await expect(page.getByTestId("call-page")).toBeVisible();
-    await expect(page).toHaveURL(/\/call\/e2e-session-main\/1$/);
-    await expect(page.getByTestId("transcript-available")).toBeVisible();
-  });
-
-  test("drawer closes via its backdrop", async ({ page }) => {
-    await openSessionsTab(page);
-    await page.getByTestId("view-full-detail-e2e-session-main-1").click();
-    await expect(page.getByTestId("trace-drawer")).toBeVisible();
-
-    await page.getByTestId("trace-drawer-backdrop").click();
-    await expect(page.getByTestId("trace-drawer")).toHaveCount(0);
-    await expect(page).toHaveURL(/\/$/);
-  });
-});
-
-test.describe("call detail deep link", () => {
-  test("direct load of /call/<session>/<n> renders the standalone page, not the drawer", async ({ page }) => {
-    await page.goto("/call/e2e-session-main/1");
-
-    await expect(page.getByTestId("call-page")).toBeVisible();
-    await expect(page.getByTestId("trace-drawer")).toHaveCount(0);
-    await expect(page.getByTestId("transcript-available")).toBeVisible();
-
-    await page.getByTestId("call-page-back").click();
-    await expect(page.getByTestId("dashboard")).toBeVisible();
-    await expect(page).toHaveURL(/\/$/);
-  });
-
-  test("direct load of a call with no transcript entry shows unavailable, standalone", async ({ page }) => {
-    // Global position 2 in e2e-session-main is UNAVAILABLE_REQUEST_ID
-    // (builder's first call, chronologically second overall).
-    await page.goto("/call/e2e-session-main/2");
-
-    await expect(page.getByTestId("call-page")).toBeVisible();
-    await expect(page.getByTestId("transcript-unavailable")).toBeVisible();
-  });
 });

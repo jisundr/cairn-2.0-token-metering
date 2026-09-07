@@ -212,7 +212,10 @@ def seed_transcript(scratch: Path, project_root: Path) -> None:
             "requestId": AVAILABLE_REQUEST_ID,
             "message": {
                 "role": "assistant",
-                "content": [{"type": "text", "text": "Sure — adding a login page now."}],
+                "content": [
+                    {"type": "tool_use", "id": "tu-available-1", "name": "Read", "input": {"file_path": "src/login.py"}},
+                    {"type": "text", "text": "Sure — adding a login page now."},
+                ],
             },
         },
     ]

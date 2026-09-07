@@ -11,8 +11,68 @@ import { expect, test } from "@playwright/test";
 test.describe("formatTimeOfDay/formatStarted render local time, not UTC", () => {
   test.use({ timezoneId: "America/New_York" });
 
-  test("formatTimeOfDay on the standalone call page", async ({ page }) => {
-    // 2026-06-15T13:45:30Z is during EDT (UTC-4): local 09:45:30.
+  test("formatTimeOfDay in the drilldown's per-call metadata line", async ({ page }) => {
+    // 2026-06-15T13:45:30Z is during EDT (UTC-4): local 09:45:30. Ported
+    // from the removed standalone call page onto SessionDrilldown.tsx's
+    // inline per-call metadata line, which now carries this formatting
+    // instead (plan.md's Actionable 9).
+    await page.route("**/api/rollup/session**", (route) =>
+      route.fulfill({
+        json: {
+          data: [
+            {
+              session_id: "tz-demo",
+              project: "proj",
+              started: "2026-06-15T13:45:30Z",
+              ended: "2026-06-15T13:45:30Z",
+              agents: ["main"],
+              calls: 1,
+              tokens: 150,
+              cost: 0.01,
+              usage_limit_hit: false,
+            },
+          ],
+          meta: { generated_at: "2026-06-15T13:46:00Z" },
+        },
+      }),
+    );
+    await page.route("**/api/session/tz-demo/trace**", (route) =>
+      route.fulfill({
+        json: {
+          data: {
+            session_id: "tz-demo",
+            started: "2026-06-15T13:45:30Z",
+            ended: "2026-06-15T13:45:30Z",
+            agents: [
+              {
+                agent: "main",
+                calls: 1,
+                tokens: 150,
+                cost: 0.01,
+                trace: [
+                  {
+                    position: 1,
+                    global_position: 1,
+                    request_id: "r1",
+                    timestamp: "2026-06-15T13:45:30Z",
+                    model: "claude-sonnet-5",
+                    input_tokens: 100,
+                    output_tokens: 50,
+                    cache_read_tokens: 0,
+                    cache_write_5m_tokens: 0,
+                    cache_write_1h_tokens: 0,
+                    cost: 0.01,
+                    duration_seconds: null,
+                  },
+                ],
+              },
+            ],
+            label: "",
+          },
+          meta: { generated_at: "2026-06-15T13:46:00Z" },
+        },
+      }),
+    );
     await page.route("**/api/call/tz-demo/1**", (route) =>
       route.fulfill({
         json: {
@@ -34,16 +94,19 @@ test.describe("formatTimeOfDay/formatStarted render local time, not UTC", () => 
             available: false,
             prompt: null,
             response: null,
+            tool_calls: [],
           },
           meta: { generated_at: "2026-06-15T13:46:00Z" },
         },
       }),
     );
 
-    await page.goto("/call/tz-demo/1");
+    await page.goto("/");
+    await page.getByTestId("app-tab-sessions").click();
 
-    await expect(page.getByTestId("call-page")).toContainText("09:45:30");
-    await expect(page.getByTestId("call-page")).not.toContainText("13:45:30");
+    const turn = page.getByTestId("chat-turn-tz-demo-1");
+    await expect(turn).toContainText("09:45:30");
+    await expect(turn).not.toContainText("13:45:30");
   });
 
   test("formatStarted on the sessions table", async ({ page }) => {

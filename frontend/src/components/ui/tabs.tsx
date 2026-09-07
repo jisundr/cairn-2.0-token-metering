@@ -29,7 +29,7 @@ export function Tabs<T extends string>({ options, value, onChange, ...rest }: Ta
             i > 0 && "border-l-0",
             i === 0 && "rounded-l-[3px]",
             i === options.length - 1 && "rounded-r-[3px]",
-            value === opt.value && "relative z-1 bg-(--signal) text-(--window)",
+            value === opt.value && "relative z-1 bg-(--signal) text-(--signal-ink)",
           )}
         >
           {opt.label}

@@ -19,7 +19,6 @@ import { type DashboardTab, Header } from "./components/Header";
 import { ProjectsPanel } from "./components/ProjectsPanel";
 import { SessionDrilldown } from "./components/SessionDrilldown";
 import { SessionsTable } from "./components/SessionsTable";
-import { TraceDrawer } from "./components/TraceDrawer";
 import { Panel, PanelTitle } from "./components/ui/panel";
 import { TokensPerDayPanel } from "./components/TokensPerDayPanel";
 import { WarningBanner } from "./components/WarningBanner";
@@ -28,14 +27,7 @@ import { formatCost, formatTokens } from "./lib/format";
 const HBAR_RANGE = "7d" as const;
 const DEFAULT_SESSIONS_RANGE: RangeKey = "30d";
 
-interface DashboardProps {
-  onOpenCall: (sessionId: string, position: number) => void;
-  drawerCall: { sessionId: string; n: number } | null;
-  onCloseDrawer: () => void;
-  onViewFullPage: () => void;
-}
-
-export function Dashboard({ onOpenCall, drawerCall, onCloseDrawer, onViewFullPage }: DashboardProps) {
+export function Dashboard() {
   const [projectFilter, setProjectFilter] = useState("all");
   const [sessionsRange, setSessionsRange] = useState<RangeKey>(DEFAULT_SESSIONS_RANGE);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -216,22 +208,10 @@ export function Dashboard({ onOpenCall, drawerCall, onCloseDrawer, onViewFullPag
                 onSessionsRangeChange={setSessionsRange}
               />
 
-              {selectedSession && (
-                <SessionDrilldown session={selectedSession} project={projectParam} onOpenCall={onOpenCall} />
-              )}
+              {selectedSession && <SessionDrilldown session={selectedSession} project={projectParam} />}
             </div>
           )}
         </>
-      )}
-
-      {drawerCall && (
-        <TraceDrawer
-          sessionId={drawerCall.sessionId}
-          n={drawerCall.n}
-          project={projectParam}
-          onClose={onCloseDrawer}
-          onViewFullPage={onViewFullPage}
-        />
       )}
     </div>
   );
