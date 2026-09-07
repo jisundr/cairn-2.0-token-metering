@@ -96,11 +96,11 @@ test.describe("populated dashboard", () => {
     await expect.poll(() => lastRangeParam).toBe("30d");
 
     await openSessionsTab(page);
-    await expect(page.getByTestId("sessions-range-30d")).toHaveClass(/bg-\(--signal\)/);
+    await expect(page.getByTestId("sessions-range-30d")).toHaveClass(/bg-\(--accent\)/);
 
     await page.getByTestId("sessions-range-life").click();
     await expect.poll(() => lastRangeParam).toBe("life");
-    await expect(page.getByTestId("sessions-range-life")).toHaveClass(/bg-\(--signal\)/);
+    await expect(page.getByTestId("sessions-range-life")).toHaveClass(/bg-\(--accent\)/);
   });
 
   test("sessions table sits in a bounded, scrollable container", async ({ page }) => {
@@ -144,11 +144,10 @@ test.describe("populated dashboard", () => {
   test("tokens/day range tabs swap chart shape", async ({ page }) => {
     // Default range is 7d - daily click-through bars.
     await expect(page.getByTestId("chart-daily-click")).toBeVisible();
-    // The calibrated-trace overlay (graticule background + SVG polyline
-    // through each bar's top) renders inside the bar chart itself.
-    const trace = page.getByTestId("chart-daily-click").getByTestId("trace-overlay");
-    await expect(trace).toBeVisible();
-    await expect(trace.locator("polyline")).toHaveCount(1);
+    // Hovering a bar reveals the recharts-native hover tooltip.
+    const firstBar = page.locator('[data-testid^="day-bar-"]').first();
+    await firstBar.hover();
+    await expect(page.getByTestId("chart-tooltip")).toBeVisible();
 
     await page.getByTestId("range-tabs-today").click();
     await expect(page.getByTestId("chart-hourly")).toBeVisible();
@@ -194,12 +193,9 @@ test.describe("populated dashboard", () => {
       await expect(page.getByTestId(`chat-turn-e2e-session-main-${globalPosition}`)).toBeVisible();
     }
 
-    // DOM order follows global_position, not agent grouping. The agent-name
-    // label is `.font-label.font-bold`; the turn's own prompt-bubble label
-    // (also `.font-label`, but not bold) would otherwise collide with this
-    // selector.
+    // DOM order follows global_position, not agent grouping.
     const turnAgents = await thread.locator("[data-testid^='chat-turn-']").evaluateAll((nodes) =>
-      nodes.map((n) => n.querySelector(".font-label.font-bold")?.textContent),
+      nodes.map((n) => n.querySelector("[data-testid='call-agent-name']")?.textContent),
     );
     expect(turnAgents).toEqual(["main", "builder", "builder", "reviewer", "cairn:planner"]);
   });

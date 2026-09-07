@@ -16,8 +16,11 @@ interface TabsProps<T extends string> {
 // mutually exclusive labels rather than a single active-tab underline).
 export function Tabs<T extends string>({ options, value, onChange, ...rest }: TabsProps<T>) {
   return (
-    <div className="font-label mb-3.5 flex text-[10.5px]" data-testid={rest["data-testid"]}>
-      {options.map((opt, i) => (
+    <div
+      className="mb-3.5 inline-flex gap-1 rounded-md border border-(--border) bg-(--surface-muted) p-0.5 text-[12.5px]"
+      data-testid={rest["data-testid"]}
+    >
+      {options.map((opt) => (
         <button
           key={opt.value}
           type="button"
@@ -25,11 +28,8 @@ export function Tabs<T extends string>({ options, value, onChange, ...rest }: Ta
           aria-pressed={value === opt.value}
           onClick={() => onChange(opt.value)}
           className={cn(
-            "cursor-pointer border border-(--paper-line) px-2.5 py-1.5 font-bold tracking-wide text-(--ink-soft) uppercase select-none",
-            i > 0 && "border-l-0",
-            i === 0 && "rounded-l-[3px]",
-            i === options.length - 1 && "rounded-r-[3px]",
-            value === opt.value && "relative z-1 bg-(--signal) text-(--signal-ink)",
+            "cursor-pointer rounded-[5px] px-2.5 py-1 font-medium text-(--ink-soft) transition-colors select-none",
+            value === opt.value && "bg-(--surface) text-(--accent)",
           )}
         >
           {opt.label}

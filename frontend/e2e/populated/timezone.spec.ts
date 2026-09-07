@@ -165,9 +165,13 @@ test.describe("activity heatmap buckets by local day-of-week/hour, not UTC", () 
     await page.goto("/");
     await expect(page.getByTestId("activity-heatmap")).toBeVisible();
 
-    await expect(page.getByTestId("heatmap-cell-6-1")).toHaveAttribute("title", "Sun 1:00 — 1 calls");
-    await expect(page.getByTestId("heatmap-cell-6-2")).not.toHaveAttribute("title");
-    await expect(page.getByTestId("heatmap-cell-6-3")).toHaveAttribute("title", "Sun 3:00 — 1 calls");
+    await expect(page.getByTestId("heatmap-tooltip-6-1")).toContainText("Sun 1:00");
+    await expect(page.getByTestId("heatmap-tooltip-6-1")).toContainText("1 calls");
+    await expect(page.getByTestId("heatmap-tooltip-6-1")).toContainText("500 tokens");
+    await expect(page.getByTestId("heatmap-tooltip-6-2")).toHaveCount(0);
+    await expect(page.getByTestId("heatmap-tooltip-6-3")).toContainText("Sun 3:00");
+    await expect(page.getByTestId("heatmap-tooltip-6-3")).toContainText("1 calls");
+    await expect(page.getByTestId("heatmap-tooltip-6-3")).toContainText("700 tokens");
   });
 
   test("a DST fall-back transition buckets both sides of the repeated hour together", async ({ page }) => {
@@ -180,7 +184,8 @@ test.describe("activity heatmap buckets by local day-of-week/hour, not UTC", () 
     ]);
 
     await page.goto("/");
-    await expect(page.getByTestId("heatmap-cell-6-1")).toHaveAttribute("title", "Sun 1:00 — 2 calls");
+    await expect(page.getByTestId("heatmap-tooltip-6-1")).toContainText("Sun 1:00");
+    await expect(page.getByTestId("heatmap-tooltip-6-1")).toContainText("2 calls");
   });
 });
 
@@ -193,9 +198,10 @@ test.describe("activity heatmap buckets by local calendar day, not UTC", () => {
 
     await page.goto("/");
 
-    await expect(page.getByTestId("heatmap-cell-6-19")).toHaveAttribute("title", "Sun 19:00 — 1 calls");
+    await expect(page.getByTestId("heatmap-tooltip-6-19")).toContainText("Sun 19:00");
+    await expect(page.getByTestId("heatmap-tooltip-6-19")).toContainText("1 calls");
     // The naive UTC-day cell (Mon 05:00) must stay empty - proves bucketing
     // used the local day, not the UTC one.
-    await expect(page.getByTestId("heatmap-cell-0-5")).not.toHaveAttribute("title");
+    await expect(page.getByTestId("heatmap-tooltip-0-5")).toHaveCount(0);
   });
 });

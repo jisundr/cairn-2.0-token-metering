@@ -20,6 +20,7 @@ import { ProjectsPanel } from "./components/ProjectsPanel";
 import { SessionDrilldown } from "./components/SessionDrilldown";
 import { SessionsTable } from "./components/SessionsTable";
 import { Panel, PanelTitle } from "./components/ui/panel";
+import { Skeleton } from "./components/ui/skeleton";
 import { TokensPerDayPanel } from "./components/TokensPerDayPanel";
 import { WarningBanner } from "./components/WarningBanner";
 import { formatCost, formatTokens } from "./lib/format";
@@ -27,12 +28,42 @@ import { formatCost, formatTokens } from "./lib/format";
 const HBAR_RANGE = "7d" as const;
 const DEFAULT_SESSIONS_RANGE: RangeKey = "30d";
 
+function pathForTab(tab: DashboardTab): string {
+  return tab === "sessions" ? "/sessions" : "/";
+}
+
+function tabFromPath(pathname: string): DashboardTab {
+  return pathname.startsWith("/sessions") ? "sessions" : "dashboard";
+}
+
 export function Dashboard() {
   const [projectFilter, setProjectFilter] = useState("all");
   const [sessionsRange, setSessionsRange] = useState<RangeKey>(DEFAULT_SESSIONS_RANGE);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [activeTab, setActiveTab] = useState<DashboardTab>("dashboard");
+  const [activeTab, setActiveTabState] = useState<DashboardTab>(() => tabFromPath(window.location.pathname));
+
+  // Tab state lives in the URL path (no router library) so a hard reload of
+  // /sessions lands back on the Sessions tab instead of resetting to Dashboard.
+  function navigateToTab(tab: DashboardTab) {
+    setActiveTabState(tab);
+    if (pathForTab(tab) !== window.location.pathname) {
+      window.history.pushState(null, "", pathForTab(tab));
+    }
+  }
+
+  useEffect(() => {
+    window.history.replaceState(null, "", pathForTab(activeTab));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    function onPopState() {
+      setActiveTabState(tabFromPath(window.location.pathname));
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const projectParam = projectFilter === "all" ? undefined : projectFilter;
 
@@ -82,15 +113,12 @@ export function Dashboard() {
   // select it there too so the existing jump-to-session behavior still works.
   function handleViewSession(sessionId: string) {
     setSelectedSessionId(sessionId);
-    setActiveTab("sessions");
+    navigateToTab("sessions");
   }
 
   return (
-    <div
-      className="mx-auto max-w-[1180px] rounded-[6px] border border-(--paper-line) bg-(--window) px-7 py-6.5 shadow-[0_1px_0_var(--paper-line-soft)]"
-      data-testid="dashboard"
-    >
-      <Header lastUpdated={lastUpdated} onRefresh={handleRefresh} activeTab={activeTab} onTabChange={setActiveTab} />
+    <div className="mx-auto max-w-[1180px] px-6 py-8" data-testid="dashboard">
+      <Header lastUpdated={lastUpdated} onRefresh={handleRefresh} activeTab={activeTab} onTabChange={navigateToTab} />
 
       {isColdStart ? (
         <EmptyState />
@@ -105,16 +133,19 @@ export function Dashboard() {
                   label="Tokens today"
                   value={formatTokens(todayTimeseries.data?.total_tokens ?? 0)}
                   testId="meter-tokens-today"
+                  isLoading={todayTimeseries.isLoading}
                 />
                 <MeterBox
                   label="Cost today"
                   value={todayTimeseries.data ? formatCost(todayTimeseries.data.total_cost) : formatCost(0)}
                   testId="meter-cost-today"
+                  isLoading={todayTimeseries.isLoading}
                 />
                 <MeterBox
                   label="Tokens 7D"
                   value={formatTokens(sevenDayTimeseries.data?.total_tokens ?? 0)}
                   testId="meter-tokens-7d"
+                  isLoading={sevenDayTimeseries.isLoading}
                 />
               </div>
 
@@ -126,6 +157,7 @@ export function Dashboard() {
                   <HbarGroupLabel>tokens by agent</HbarGroupLabel>
                   <HbarList
                     data-testid="agent-rollup"
+                    isLoading={agentRollup.isLoading}
                     rows={(agentRollup.data ?? []).map((r) => ({
                       label: r.key,
                       value: r.tokens,
@@ -135,6 +167,7 @@ export function Dashboard() {
                   <HbarGroupLabel>skills invoked</HbarGroupLabel>
                   <HbarList
                     data-testid="skill-rollup"
+                    isLoading={skillRollup.isLoading}
                     rows={(skillRollup.data ?? []).map((r) => ({
                       label: r.key,
                       value: r.count,
@@ -156,6 +189,7 @@ export function Dashboard() {
                   <PanelTitle>Tokens / model, {HBAR_RANGE}</PanelTitle>
                   <HbarList
                     data-testid="model-rollup"
+                    isLoading={modelRollup.isLoading}
                     rows={(modelRollup.data ?? []).map((r) => ({
                       label: r.key,
                       value: r.tokens,
@@ -168,6 +202,7 @@ export function Dashboard() {
                   <PanelTitle>Tool calls, {HBAR_RANGE}</PanelTitle>
                   <HbarList
                     data-testid="tool-rollup"
+                    isLoading={toolRollup.isLoading}
                     rows={(toolRollup.data ?? []).map((r) => ({
                       label: r.key,
                       value: r.count,
@@ -180,6 +215,7 @@ export function Dashboard() {
                   <PanelTitle>MCP calls, {HBAR_RANGE}</PanelTitle>
                   <HbarList
                     data-testid="mcp-rollup"
+                    isLoading={mcpRollup.isLoading}
                     rows={(mcpRollup.data ?? []).map((r) => ({
                       label: r.key,
                       value: r.count,
@@ -217,19 +253,28 @@ export function Dashboard() {
   );
 }
 
-// Top-of-page instrument readout (DESIGN.md's Meter Boxes): a bordered
-// --window box with a 2px --paper-line-soft top hairline, label-face caption
-// over a large tabular-mono value. Read-only — no hover/interactive state.
-function MeterBox({ label, value, testId }: { label: string; value: string; testId: string }) {
+function MeterBox({
+  label,
+  value,
+  testId,
+  isLoading,
+}: {
+  label: string;
+  value: string;
+  testId: string;
+  isLoading?: boolean;
+}) {
   return (
     <div
       data-testid={testId}
-      className="relative flex-1 basis-[170px] overflow-hidden rounded-[4px] border border-(--paper-line) bg-(--window) px-4 py-3 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-(--paper-line-soft)"
+      className="flex-1 basis-[170px] rounded-lg border border-(--border) bg-(--surface) px-4 py-3.5"
     >
-      <span className="font-label block text-[11px] font-semibold tracking-[.08em] text-(--ink-soft) uppercase">
-        {label}
-      </span>
-      <span className="font-mono block text-[27px] font-semibold tabular-nums text-(--ink)">{value}</span>
+      <span className="block text-[11px] font-medium text-(--ink-soft)">{label}</span>
+      {isLoading ? (
+        <Skeleton className="mt-1 h-[27px] w-16" />
+      ) : (
+        <span className="font-mono block text-[27px] font-semibold tabular-nums text-(--ink)">{value}</span>
+      )}
     </div>
   );
 }

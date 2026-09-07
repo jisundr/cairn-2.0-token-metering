@@ -1,40 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  --bone: #f1ebda;
-  --bone-dim: #e7ddc0;
-  --window: #f8f3e5;
-  --block: #e2d7b8;
-  --ink: #1a2233;
-  --ink-soft: #4e5871;
-  --ink-faint: #5b5e69;
-  --signal: #c1741c;
-  --signal-soft: #ecdcb6;
-  --signal-line: #a8631a;
-  --signal-ink: #161c2a;
-  --ch1: #1a2233;
-  --ch1-soft: #dfe1e8;
-  --ch2: #38496e;
-  --ch3: #415680;
-  --ch4: #4a6191;
-  --paper-line: rgba(23, 30, 44, 0.18);
-  --paper-line-soft: rgba(23, 30, 44, 0.09);
-}
-
-@font-face {
-  font-family: "Big Shoulders";
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url("/fonts/BigShoulders-600.woff2") format("woff2");
-}
-
-@font-face {
-  font-family: "Big Shoulders";
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url("/fonts/BigShoulders-700.woff2") format("woff2");
+  --page-bg: #fafafa;
+  --surface: #ffffff;
+  --surface-muted: #f4f4f5;
+  --border: #e4e4e7;
+  --border-soft: #eeeef0;
+  --ink: #18181b;
+  --ink-soft: #52525b;
+  --ink-faint: #a1a1aa;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #6366f1;
+  --warn: #b45309;
+  --warn-soft: #fef3c7;
+  --ch1: #4f46e5;
+  --ch1-soft: #eef2ff;
+  --ch2: #0ea5e9;
+  --ch3: #10b981;
+  --ch4: #f59e0b;
 }
 
 @font-face {
@@ -86,28 +70,27 @@
 }
 
 @theme {
-  --font-label: "Big Shoulders", "Arial Narrow", sans-serif;
   --font-body: "Public Sans", -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Martian Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  --color-bone: var(--bone);
-  --color-bone-dim: var(--bone-dim);
-  --color-window: var(--window);
-  --color-block: var(--block);
+  --color-page-bg: var(--page-bg);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
   --color-ink-faint: var(--ink-faint);
-  --color-signal: var(--signal);
-  --color-signal-soft: var(--signal-soft);
-  --color-signal-line: var(--signal-line);
-  --color-signal-ink: var(--signal-ink);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
   --color-ch1: var(--ch1);
   --color-ch1-soft: var(--ch1-soft);
   --color-ch2: var(--ch2);
   --color-ch3: var(--ch3);
   --color-ch4: var(--ch4);
-  --color-paper-line: var(--paper-line);
-  --color-paper-line-soft: var(--paper-line-soft);
 }
 
 html,
@@ -118,8 +101,25 @@ body,
 
 body {
   margin: 0;
-  background: var(--bone);
+  background: var(--page-bg);
   color: var(--ink);
   font-family:
     "Public Sans", -apple-system, "Segoe UI", sans-serif;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+label:has(input:focus-visible) {
+  outline: 2px solid var(--accent-line);
+  outline-offset: -1px;
+  border-radius: 2px;
 }

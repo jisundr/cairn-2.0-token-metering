@@ -33,8 +33,8 @@ export function SessionsTable({
 
   return (
     <div className="mb-5.5">
-      <div className="font-label mb-3.5 text-xs tracking-wide text-(--ink-soft) uppercase">Sessions</div>
-      <p className="font-label -mt-1.5 mb-3 text-[11px] text-(--ink-soft)">
+      <div className="mb-3.5 text-[13px] font-semibold">Sessions</div>
+      <p className="-mt-1.5 mb-3 text-[11px] text-(--ink-soft)">
         Most recent session shown below by default — click any row to change it.
       </p>
 
@@ -67,9 +67,9 @@ export function SessionsTable({
         </div>
       )}
 
-      <div className="max-h-[420px] overflow-y-auto rounded-[4px] border border-(--paper-line)">
+      <div className="max-h-[420px] overflow-y-auto rounded-lg border border-(--border)">
         <table className="w-full border-collapse text-[13px]" data-testid="sessions-table">
-          <thead className="sticky top-0 z-10 bg-(--window)">
+          <thead className="sticky top-0 z-10 bg-(--surface)">
             <tr>
               <Th>Started</Th>
               <Th>Session</Th>
@@ -88,14 +88,14 @@ export function SessionsTable({
                   data-testid={`session-row-${s.session_id}`}
                   onClick={() => onSelect(s.session_id)}
                   className={cn(
-                    "cursor-pointer border-b border-dashed border-(--paper-line)",
-                    selected && "bg-(--signal-soft)",
+                    "cursor-pointer border-b border-(--border-soft)",
+                    selected && "bg-(--accent-soft)",
                   )}
                 >
                   <Td mono>{formatStarted(s.started)}</Td>
                   <Td>
-                    {selected && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-[1px] bg-(--signal)" />}
-                    {s.usage_limit_hit && <span className="mr-1.5 inline-block h-1.75 w-1.75 rounded-full bg-(--signal)" />}
+                    {selected && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-[1px] bg-(--accent)" />}
+                    {s.usage_limit_hit && <span className="mr-1.5 inline-block h-1.75 w-1.75 rounded-full bg-(--warn)" />}
                     {s.label || shortId(s.session_id)}
                   </Td>
                   {multiProject && <Td>{s.project}</Td>}
@@ -129,8 +129,8 @@ function FilterPill({
       onClick={onClick}
       data-testid={testId ?? `project-filter-${label}`}
       className={cn(
-        "font-label cursor-pointer rounded-[3px] border border-(--paper-line) bg-(--window) px-3 py-1 text-[10.5px] tracking-wide text-(--ink-soft) uppercase select-none",
-        active && "border-(--signal) bg-(--signal) font-bold text-(--signal-ink)",
+        "cursor-pointer rounded-full border border-(--border) bg-(--surface) px-3 py-1 text-[12px] font-medium text-(--ink-soft) select-none",
+        active && "border-(--accent) bg-(--accent) text-white",
       )}
     >
       {label}
@@ -140,7 +140,7 @@ function FilterPill({
 
 function Th({ children }: { children: ReactNode }) {
   return (
-    <th className="font-label border-b border-(--paper-line) px-2.5 pb-2 text-left text-[10.5px] font-normal tracking-wide text-(--ink-soft) uppercase">
+    <th className="border-b border-(--border) px-2.5 pb-2 text-left text-[10.5px] font-medium tracking-wide text-(--ink-soft) uppercase">
       {children}
     </th>
   );

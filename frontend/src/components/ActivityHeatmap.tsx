@@ -1,15 +1,15 @@
 import type { HeatmapRow } from "../api/types";
+import { formatTokens } from "../lib/format";
 import { cn } from "../lib/utils";
 
 const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-// Ink-scale intensity, low to high (DESIGN.md's Ink-Scale Data Rule reserves
-// --ch1-4 for genuine multi-series data, not a single-series intensity
-// ramp) - four named tokens, so four buckets, not the prior five.
+// Accent-intensity ramp, low to high: level 0 is an empty cell, 1-3 step
+// through increasing opacity of the single accent color.
 const LEVEL_CLASSES = [
-  "border border-(--paper-line) bg-(--bone-dim)",
-  "bg-(--ink-faint)",
-  "bg-(--ink-soft)",
-  "bg-(--ink)",
+  "border border-(--border) bg-(--surface-muted)",
+  "bg-(--accent)/15",
+  "bg-(--accent)/45",
+  "bg-(--accent)",
 ];
 
 function levelFor(tokens: number, max: number): number {
@@ -44,7 +44,7 @@ export function ActivityHeatmap({ calls }: { calls: HeatmapRow[] }) {
 
   return (
     <div className="mt-1.5 flex flex-col gap-[3px]" data-testid="activity-heatmap">
-      <div className="font-label grid grid-cols-[26px_repeat(24,1fr)] items-center gap-[3px] text-[8.5px] text-(--ink-soft)">
+      <div className="grid grid-cols-[26px_repeat(24,1fr)] items-center gap-[3px] text-[8.5px] text-(--ink-soft)">
         <span />
         {Array.from({ length: 24 }, (_, h) => (
           <span key={h}>{h % 4 === 0 ? String(h).padStart(2, "0") : ""}</span>
@@ -52,17 +52,30 @@ export function ActivityHeatmap({ calls }: { calls: HeatmapRow[] }) {
       </div>
       {DOW_LABELS.map((label, dow) => (
         <div key={label} className="grid grid-cols-[26px_repeat(24,1fr)] items-center gap-[3px]">
-          <span className="font-label text-[10px] text-(--ink-soft)">{label}</span>
+          <span className="text-[10px] text-(--ink-soft)">{label}</span>
           {Array.from({ length: 24 }, (_, hour) => {
             const cell = cells.get(`${dow}-${hour}`);
             const level = levelFor(cell?.tokens ?? 0, max);
             return (
-              <span
-                key={hour}
-                data-testid={`heatmap-cell-${dow}-${hour}`}
-                title={cell ? `${label} ${hour}:00 — ${cell.calls} calls` : undefined}
-                className={cn("aspect-square rounded-[2px]", LEVEL_CLASSES[level])}
-              />
+              <div key={hour} className="group relative">
+                <span
+                  data-testid={`heatmap-cell-${dow}-${hour}`}
+                  className={cn("block aspect-square rounded-[2px]", LEVEL_CLASSES[level])}
+                />
+                {cell && (
+                  <div
+                    data-testid={`heatmap-tooltip-${dow}-${hour}`}
+                    className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 hidden -translate-x-1/2 rounded-md border border-(--border) bg-(--surface) px-2 py-1.5 text-[11px] whitespace-nowrap text-(--ink) group-hover:block"
+                  >
+                    <div className="font-medium">
+                      {label} {hour}:00
+                    </div>
+                    <div className="text-(--ink-soft) tabular-nums">
+                      {cell.calls} calls · {formatTokens(cell.tokens)} tokens
+                    </div>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

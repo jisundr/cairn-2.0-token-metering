@@ -176,8 +176,8 @@ export function SessionDrilldown({ session, project }: SessionDrilldownProps) {
     .sort((a, b) => a.firstGlobalPosition - b.firstGlobalPosition);
 
   return (
-    <div className="rounded-[4px] border border-(--paper-line) bg-(--window)" data-testid="session-drilldown">
-      <div className="flex flex-wrap items-baseline gap-2.5 rounded-t-[3px] border-b border-(--paper-line) bg-(--bone-dim) px-4.5 py-3.5">
+    <div className="rounded-lg border border-(--border) bg-(--surface)" data-testid="session-drilldown">
+      <div className="flex flex-wrap items-baseline gap-2.5 rounded-t-lg border-b border-(--border) bg-(--surface-muted) px-4.5 py-3.5">
         <span className="text-[13px] font-bold">{session.label || `Session ${shortId(session.session_id)}`}</span>
         <span className="font-mono text-[11.5px] text-(--ink-soft)">
           {formatSessionDuration(trace.started, trace.ended)} runtime
@@ -185,7 +185,7 @@ export function SessionDrilldown({ session, project }: SessionDrilldownProps) {
         </span>
       </div>
 
-      <div className="border-b border-(--paper-line)" data-testid="agent-select-list">
+      <div className="border-b border-(--border)" data-testid="agent-select-list">
         {agentsWithColor.map(({ agent, name, channelColor }) => (
           <AgentSelectRow
             key={name}
@@ -202,10 +202,10 @@ export function SessionDrilldown({ session, project }: SessionDrilldownProps) {
       </div>
 
       <div
-        className="mx-4.5 my-2.5 rounded-[4px] border border-(--paper-line) bg-(--bone-dim) px-4.5 pt-4 pb-1"
+        className="mx-4.5 my-2.5 rounded-md border border-(--border) bg-(--surface-muted) px-4.5 pt-4 pb-1"
         data-testid="chat-thread"
       >
-        <div className="font-label mb-4 text-[9.5px] font-bold tracking-wide text-(--ink-soft) uppercase">
+        <div className="mb-4 text-[10px] font-semibold tracking-wide text-(--ink-soft) uppercase">
           full transcript — check an agent above to highlight its calls
         </div>
         {turns.map((turn) => (
@@ -242,14 +242,15 @@ function AgentSelectRow({
 }) {
   const isSubagent = name !== "main";
   const checkboxId = `agent-select-${name}`;
+  const pct = Math.round((tokens / maxTokens) * 100);
 
   return (
-    <div className="border-b border-(--paper-line-soft) last:border-b-0" data-testid={`agent-row-${name}`}>
+    <div className="border-b border-(--border-soft) last:border-b-0" data-testid={`agent-row-${name}`}>
       <label
         htmlFor={checkboxId}
         className={
           "grid w-full cursor-pointer grid-cols-[18px_110px_1fr_90px_90px_70px] items-center gap-3 px-4.5 py-3 text-left text-[13px] " +
-          (checked ? "bg-(--bone-dim)" : "bg-transparent")
+          (checked ? "bg-(--surface-muted)" : "bg-transparent")
         }
       >
         <input
@@ -272,22 +273,20 @@ function AgentSelectRow({
         <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold leading-tight">
           <span className="truncate">{name}</span>
           {isSubagent && (
-            <span className="font-label shrink-0 rounded-[3px] border border-(--paper-line) px-1 py-0.5 text-[9.5px] lowercase text-(--ink-faint)">
+            <span className="shrink-0 rounded-[3px] border border-(--border) px-1 py-0.5 text-[9.5px] lowercase text-(--ink-faint)">
               subagent
             </span>
           )}
         </span>
-        <div
-          className="h-2 overflow-hidden rounded-[2px] border border-(--paper-line) bg-(--bone-dim)"
-          data-testid={`agent-mini-bar-${name}`}
-        >
-          <div className="h-full" style={{ width: `${(tokens / maxTokens) * 100}%`, backgroundColor: channelColor }} />
+        <div className="flex items-center gap-1.5" data-testid={`agent-mini-bar-${name}`}>
+          <div className="h-2 flex-1 overflow-hidden rounded-[2px] border border-(--border) bg-(--surface-muted)">
+            <div className="h-full" style={{ width: `${pct}%`, backgroundColor: channelColor }} />
+          </div>
+          <span className="w-8 flex-none text-right text-[10.5px] text-(--ink-faint) tabular-nums">{pct}%</span>
         </div>
-        <span className="font-label text-right text-[11.5px] text-(--ink-soft) tabular-nums">{calls} calls</span>
-        <span className="font-label text-right text-[11.5px] text-(--ink-soft) tabular-nums">
-          {formatTokens(tokens)} tok
-        </span>
-        <span className="font-label text-right text-[12px] font-bold tabular-nums">{formatCost(cost)}</span>
+        <span className="text-right text-[11.5px] text-(--ink-soft) tabular-nums">{calls} calls</span>
+        <span className="text-right text-[11.5px] text-(--ink-soft) tabular-nums">{formatTokens(tokens)} tok</span>
+        <span className="text-right text-[12px] font-bold tabular-nums">{formatCost(cost)}</span>
       </label>
     </div>
   );
@@ -305,7 +304,7 @@ function ChatTurn({ sessionId, turn, dimmed }: { sessionId: string; turn: Turn; 
 
   return (
     <div
-      className="border-l border-(--paper-line) pb-4 pl-3.5 transition-opacity duration-150 [&+&]:mt-4 [&+&]:border-t [&+&]:border-dashed [&+&]:border-(--paper-line) [&+&]:pt-4"
+      className="border-l border-(--border) pb-4 pl-3.5 transition-opacity duration-150 [&+&]:mt-4 [&+&]:border-t [&+&]:border-(--border) [&+&]:pt-4"
       style={{ opacity: dimmed ? 0.32 : 1 }}
       data-testid={`chat-turn-${sessionId}-${turn.firstGlobalPosition}`}
     >
@@ -317,12 +316,10 @@ function ChatTurn({ sessionId, turn, dimmed }: { sessionId: string; turn: Turn; 
 
       {finalResponse && (
         <div className="mb-2.5 ml-auto max-w-[80%] last:mb-0">
-          <span className="font-label mb-1 block text-right text-[9px] tracking-wide text-(--ink-faint) uppercase">
-            response
-          </span>
+          <span className="mb-1 block text-right text-[9px] tracking-wide text-(--ink-faint) uppercase">response</span>
           <div
-            className="rounded-[4px] border border-(--paper-line) px-3 py-2.5 text-[12px] whitespace-pre-wrap"
-            style={{ backgroundColor: "var(--ch1-soft)", borderColor: "var(--ch1-soft)" }}
+            className="rounded-md border border-(--ch1-soft) px-3 py-2.5 text-[12px] whitespace-pre-wrap"
+            style={{ backgroundColor: "var(--ch1-soft)" }}
             data-testid="chat-bubble-response"
           >
             {finalResponse}
@@ -343,7 +340,7 @@ function CallMeta({ entry }: { entry: CallEntry }) {
   return (
     <div className="mb-2.5">
       <div className="font-mono flex flex-wrap items-center gap-2 text-[10px] tabular-nums text-(--ink-soft)">
-        <span className="font-label font-bold" style={{ color: channelColor }}>
+        <span className="font-body font-semibold" style={{ color: channelColor }} data-testid="call-agent-name">
           {agentName}
         </span>
         <span>
@@ -380,14 +377,12 @@ function ChatBubble({
   return (
     <div className={"mb-2.5 max-w-[80%] last:mb-0 " + (isRight ? "ml-auto" : "mr-auto")}>
       <span
-        className={
-          "font-label mb-1 block text-[9px] tracking-wide text-(--ink-faint) uppercase " + (isRight ? "text-right" : "")
-        }
+        className={"mb-1 block text-[9px] tracking-wide text-(--ink-faint) uppercase " + (isRight ? "text-right" : "")}
       >
         {role}
       </span>
       <div
-        className="rounded-[4px] border border-(--paper-line) px-3 py-2.5 text-[12px] whitespace-pre-wrap"
+        className="rounded-md border border-(--border) px-3 py-2.5 text-[12px] whitespace-pre-wrap"
         style={isRight ? { backgroundColor: "var(--ch1-soft)", borderColor: "var(--ch1-soft)" } : undefined}
         data-testid={`chat-bubble-${role}`}
       >
