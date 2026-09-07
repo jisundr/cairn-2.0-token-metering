@@ -76,11 +76,11 @@ export function ActivityHeatmap({ calls }: { calls: HeatmapRow[] }) {
   return (
     <div
       className="mt-1.5 grid gap-[3px]"
-      style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}
+      style={{ gridTemplateColumns: `repeat(${columnCount}, 11px)` }}
       data-testid="activity-heatmap"
     >
       {Array.from({ length: columnCount }, (_, col) => (
-        <div key={col} className="grid grid-rows-[repeat(7,1fr)] gap-[3px]">
+        <div key={col} className="grid grid-rows-[repeat(7,11px)] gap-[3px]">
           {Array.from({ length: 7 }, (_, dow) => {
             const day = columns.get(col)?.find((d) => d.date.getDay() === dow);
             if (!day) return <div key={dow} />;
@@ -90,7 +90,7 @@ export function ActivityHeatmap({ calls }: { calls: HeatmapRow[] }) {
               <div key={dow} className="group relative">
                 <span
                   data-testid={`heatmap-cell-${day.key}`}
-                  className={cn("block aspect-square rounded-[2px]", LEVEL_CLASSES[level])}
+                  className={cn("block h-[11px] w-[11px] rounded-[2px]", LEVEL_CLASSES[level])}
                 />
                 {cell && (
                   <div
