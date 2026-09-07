@@ -1,3 +1,11 @@
+## Branching
+- Phased tasks (an escalated-path `plan.md` drives the build): implement in a task-scoped git
+  worktree, not directly on `main` — isolates in-progress code regardless of whether other
+  tracks are running in parallel. Worktree at `token-metering/.claude/worktrees/<task-slug>`,
+  branch `<task-slug>`; merge via PR into `main` once gates + `cairn:reviewer` pass, then delete
+  the branch/worktree.
+- Default-path (no `plan.md`) fixes may commit directly to `main`.
+
 ## Gates
 - `pytest test_*.py` clean before any commit
 - Frontend: `npm run build` inside `frontend/` regenerates `static/` — commit the rebuilt `static/`, never hand-edit it
