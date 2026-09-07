@@ -18,6 +18,14 @@ async function openSessionsTab(page: Page) {
   await expect(page.getByTestId("tab-panel-sessions")).toBeVisible();
 }
 
+// The drilldown now lives on its own page, reached by clicking a session
+// row from the (list-only) Sessions tab.
+async function openSessionDrilldown(page: Page, sessionId: string) {
+  await openSessionsTab(page);
+  await page.getByTestId(`session-row-${sessionId}`).click();
+  await expect(page.getByTestId("session-drilldown")).toBeVisible();
+}
+
 test.describe("populated dashboard", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
@@ -35,6 +43,9 @@ test.describe("populated dashboard", () => {
     // its server name ("context7") for this rollup.
     await expect(page.getByTestId("mcp-rollup")).toContainText("context7");
     await expect(page.getByTestId("activity-heatmap")).toBeVisible();
+    // One cell per calendar day in the 7-day window (arranged into 1-2 week
+    // columns), not the former 7x24 dow-hour grid (168 cells).
+    await expect(page.locator('[data-testid^="heatmap-cell-"]')).toHaveCount(7);
   });
 
   test("switches between the Dashboard and Sessions tab panels", async ({ page }) => {
@@ -47,10 +58,9 @@ test.describe("populated dashboard", () => {
     await expect(page.getByTestId("tab-panel-sessions")).toBeVisible();
     await expect(page.getByTestId("tab-panel-dashboard")).toHaveCount(0);
     await expect(page.getByTestId("app-tab-sessions")).toHaveAttribute("aria-pressed", "true");
-    // Sessions tab renders the sessions table and, for the auto-selected
-    // most-recent session, its drilldown.
+    // Sessions tab is list-only - the drilldown lives on its own page now,
+    // reached by clicking a row (see the session-page tests below).
     await expect(page.getByTestId("sessions-table")).toBeVisible();
-    await expect(page.getByTestId("session-drilldown")).toBeVisible();
 
     await page.getByTestId("app-tab-dashboard").click();
     await expect(page.getByTestId("tab-panel-dashboard")).toBeVisible();
@@ -69,14 +79,16 @@ test.describe("populated dashboard", () => {
     await openSessionsTab(page);
 
     // e2e-session-main has a saved label - shown as-is, in both the table
-    // row and (auto-selected, being the most recent session) the drilldown
-    // header, instead of any id.
+    // row and (once its row is clicked, opening the session page) the
+    // drilldown header, instead of any id.
     const mainRow = page.getByTestId("session-row-e2e-session-main");
     await expect(mainRow).toContainText(SESSION_MAIN_LABEL);
+    await mainRow.click();
     await expect(page.getByTestId("session-drilldown")).toContainText(SESSION_MAIN_LABEL);
 
     // e2e-session-other has no saved label - falls back to its short id in
     // both places instead.
+    await page.getByTestId("back-to-sessions").click();
     const otherRow = page.getByTestId("session-row-e2e-session-other");
     await expect(otherRow).toContainText(shortId("e2e-session-other"));
 
@@ -115,11 +127,12 @@ test.describe("populated dashboard", () => {
     await expect(banner).toBeVisible();
     await expect(banner).toContainText("e2e-session-main");
     await page.getByTestId("usage-limit-view-session").click();
-    // Clicking "view session" from the Dashboard tab jumps straight to the
-    // Sessions tab so the drilldown it points at is actually visible. The
-    // header shows e2e-session-main's saved label rather than its raw id.
-    await expect(page.getByTestId("tab-panel-sessions")).toBeVisible();
+    // Clicking "view session" from the Dashboard tab lands directly on the
+    // session's own full-page drilldown, addressed by URL. The header shows
+    // e2e-session-main's saved label rather than its raw id.
+    await expect(page.getByTestId("session-drilldown")).toBeVisible();
     await expect(page.getByTestId("session-drilldown")).toContainText(SESSION_MAIN_LABEL);
+    expect(new URL(page.url()).pathname).toBe("/sessions/e2e-session-main");
   });
 
   test("meter row shows today/cost/7d totals matching the seeded timeseries data", async ({ page }) => {
@@ -181,7 +194,7 @@ test.describe("populated dashboard", () => {
   });
 
   test("drilldown shows a global_position-ordered chat-thread merging every agent's calls", async ({ page }) => {
-    await openSessionsTab(page);
+    await openSessionDrilldown(page, "e2e-session-main");
 
     // e2e-session-main's calls in chronological (global_position) order:
     // main (#1, global 1), builder (#1, global 2 - unavailable transcript),
@@ -203,7 +216,7 @@ test.describe("populated dashboard", () => {
   test("drilldown renders inline tool-action lines, with no dangling response bubble for a pure tool-use call", async ({
     page,
   }) => {
-    await openSessionsTab(page);
+    await openSessionDrilldown(page, "e2e-session-main");
 
     // main's turn (global_position 1, fixtures/seed.py's AVAILABLE_REQUEST_ID)
     // has a transcript-available Read tool_use plus a text reply - "Read"
@@ -235,8 +248,7 @@ test.describe("populated dashboard", () => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
 
-    await openSessionsTab(page);
-    await page.getByTestId("session-row-e2e-session-other").click();
+    await openSessionDrilldown(page, "e2e-session-other");
 
     const drilldown = page.getByTestId("session-drilldown");
     await expect(drilldown).toBeVisible();
@@ -254,15 +266,18 @@ test.describe("populated dashboard", () => {
   });
 
   test("drilldown calls out the token-dominant agent and shows a non-duplicate summary", async ({ page }) => {
-    await openSessionsTab(page);
+    await openSessionDrilldown(page, "e2e-session-main");
     const drilldown = page.getByTestId("session-drilldown");
-    await expect(drilldown).toBeVisible();
 
     // Every agent's stats row is visible by default (no accordion) -
     // builder has the most tokens across e2e-session-main's calls.
     await expect(page.getByTestId("agent-row-main")).toBeVisible();
     await expect(page.getByTestId("agent-row-builder")).toBeVisible();
     await expect(page.getByTestId("agent-row-reviewer")).toBeVisible();
+
+    // The stacked share bar renders one segment per agent, above the legend.
+    await expect(page.getByTestId("agent-share-segment-main")).toBeVisible();
+    await expect(page.getByTestId("agent-share-segment-builder")).toBeVisible();
 
     await expect(drilldown).toContainText("runtime");
     await expect(drilldown).toContainText("builder dominant");
@@ -272,20 +287,19 @@ test.describe("populated dashboard", () => {
   });
 
   test("checking an agent dims other agents' chat-thread turns, in place", async ({ page }) => {
-    await openSessionsTab(page);
-    await expect(page.getByTestId("session-drilldown")).toBeVisible();
+    await openSessionDrilldown(page, "e2e-session-main");
 
     const mainTurn = page.getByTestId("chat-turn-e2e-session-main-1"); // main's only call
     const builderTurn = page.getByTestId("chat-turn-e2e-session-main-2"); // builder's first call
 
-    // Nothing checked - every turn renders at full opacity.
+    // Nothing selected - every turn renders at full opacity.
     await expect(mainTurn).toHaveCSS("opacity", "1");
     await expect(builderTurn).toHaveCSS("opacity", "1");
-    await expect(page.getByTestId("agent-select-main")).not.toBeChecked();
+    await expect(page.getByTestId("agent-select-main")).toHaveAttribute("aria-pressed", "false");
 
-    // Checking "main" dims (not removes) every other agent's turns, in place.
+    // Selecting "main" dims (not removes) every other agent's turns, in place.
     await page.getByTestId("agent-row-main").click();
-    await expect(page.getByTestId("agent-select-main")).toBeChecked();
+    await expect(page.getByTestId("agent-select-main")).toHaveAttribute("aria-pressed", "true");
     await expect(mainTurn).toHaveCSS("opacity", "1");
     await expect(builderTurn).toHaveCSS("opacity", "0.32");
     await expect(builderTurn).toBeVisible();
@@ -304,7 +318,7 @@ test.describe("populated dashboard", () => {
   test("wraps a long subagent name's badge onto its own line, without overflowing the name column", async ({
     page,
   }) => {
-    await openSessionsTab(page);
+    await openSessionDrilldown(page, "e2e-session-main");
     const row = page.getByTestId("agent-row-cairn:planner");
     await expect(row).toBeVisible();
 
@@ -316,17 +330,17 @@ test.describe("populated dashboard", () => {
     // Wrapped onto its own line: the badge sits below the name, not beside
     // it on the same line.
     expect(badgeBox!.y).toBeGreaterThan(nameBox!.y);
-    // Neither element spills past the shared 110px name column into the
-    // token-bar column beside it.
-    const bar = row.getByTestId("agent-mini-bar-cairn:planner");
-    const barBox = await bar.boundingBox();
-    expect(barBox).not.toBeNull();
-    expect(nameBox!.x + nameBox!.width).toBeLessThanOrEqual(barBox!.x);
-    expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(barBox!.x);
+    // Neither element spills past the flexible name column into the
+    // calls/tokens/cost meta trio beside it.
+    const meta = row.getByTestId("agent-row-meta-cairn:planner");
+    const metaBox = await meta.boundingBox();
+    expect(metaBox).not.toBeNull();
+    expect(nameBox!.x + nameBox!.width).toBeLessThanOrEqual(metaBox!.x);
+    expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(metaBox!.x);
   });
 
   test("main row (no badge) renders unchanged", async ({ page }) => {
-    await openSessionsTab(page);
+    await openSessionDrilldown(page, "e2e-session-main");
     const row = page.getByTestId("agent-row-main");
     await expect(row).toBeVisible();
     await expect(row.getByText("subagent")).toHaveCount(0);
