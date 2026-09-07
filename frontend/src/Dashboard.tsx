@@ -28,12 +28,17 @@ import { formatCost, formatTokens } from "./lib/format";
 const HBAR_RANGE = "7d" as const;
 const DEFAULT_SESSIONS_RANGE: RangeKey = "30d";
 
-function pathForTab(tab: DashboardTab): string {
-  return tab === "sessions" ? "/sessions" : "/";
+type View = { kind: "tab"; tab: DashboardTab } | { kind: "session"; sessionId: string };
+
+function pathForView(view: View): string {
+  if (view.kind === "session") return `/sessions/${encodeURIComponent(view.sessionId)}`;
+  return view.tab === "sessions" ? "/sessions" : "/";
 }
 
-function tabFromPath(pathname: string): DashboardTab {
-  return pathname.startsWith("/sessions") ? "sessions" : "dashboard";
+function parseView(pathname: string): View {
+  const sessionMatch = pathname.match(/^\/sessions\/(.+)$/);
+  if (sessionMatch) return { kind: "session", sessionId: decodeURIComponent(sessionMatch[1]) };
+  return { kind: "tab", tab: pathname.startsWith("/sessions") ? "sessions" : "dashboard" };
 }
 
 export function Dashboard() {
@@ -41,25 +46,54 @@ export function Dashboard() {
   const [sessionsRange, setSessionsRange] = useState<RangeKey>(DEFAULT_SESSIONS_RANGE);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [activeTab, setActiveTabState] = useState<DashboardTab>(() => tabFromPath(window.location.pathname));
+  const initialView = parseView(window.location.pathname);
+  const [activeTab, setActiveTabState] = useState<DashboardTab>(
+    initialView.kind === "tab" ? initialView.tab : "sessions",
+  );
+  const [viewSessionId, setViewSessionId] = useState<string | null>(
+    initialView.kind === "session" ? initialView.sessionId : null,
+  );
 
-  // Tab state lives in the URL path (no router library) so a hard reload of
-  // /sessions lands back on the Sessions tab instead of resetting to Dashboard.
+  // Tab/session state lives in the URL path (no router library) so a hard
+  // reload of /sessions or /sessions/<id> lands back on the same view
+  // instead of resetting to Dashboard.
   function navigateToTab(tab: DashboardTab) {
     setActiveTabState(tab);
-    if (pathForTab(tab) !== window.location.pathname) {
-      window.history.pushState(null, "", pathForTab(tab));
-    }
+    setViewSessionId(null);
+    const path = pathForView({ kind: "tab", tab });
+    if (path !== window.location.pathname) window.history.pushState(null, "", path);
+  }
+
+  function navigateToSession(sessionId: string) {
+    setSelectedSessionId(sessionId);
+    setViewSessionId(sessionId);
+    setActiveTabState("sessions");
+    const path = pathForView({ kind: "session", sessionId });
+    if (path !== window.location.pathname) window.history.pushState(null, "", path);
+  }
+
+  function navigateBackToSessions() {
+    setViewSessionId(null);
+    navigateToTab("sessions");
   }
 
   useEffect(() => {
-    window.history.replaceState(null, "", pathForTab(activeTab));
+    const view = parseView(window.location.pathname);
+    window.history.replaceState(null, "", pathForView(view));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     function onPopState() {
-      setActiveTabState(tabFromPath(window.location.pathname));
+      const view = parseView(window.location.pathname);
+      if (view.kind === "session") {
+        setSelectedSessionId(view.sessionId);
+        setViewSessionId(view.sessionId);
+        setActiveTabState("sessions");
+      } else {
+        setViewSessionId(null);
+        setActiveTabState(view.tab);
+      }
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -108,25 +142,29 @@ export function Dashboard() {
     projects.refetch();
   }
 
-  // The warning banner's "view session" link lives on the Dashboard tab but
-  // points at a session's drilldown, which now renders on the Sessions tab -
-  // select it there too so the existing jump-to-session behavior still works.
-  function handleViewSession(sessionId: string) {
-    setSelectedSessionId(sessionId);
-    navigateToTab("sessions");
-  }
-
   return (
-    <div className="mx-auto max-w-[1180px] px-6 py-8" data-testid="dashboard">
+    <div className="mx-auto flex min-h-screen max-w-[1180px] flex-col px-6 py-8" data-testid="dashboard">
       <Header lastUpdated={lastUpdated} onRefresh={handleRefresh} activeTab={activeTab} onTabChange={navigateToTab} />
 
       {isColdStart ? (
         <EmptyState />
+      ) : viewSessionId && selectedSession ? (
+        <div className="flex min-h-0 flex-1 flex-col" data-testid="session-page">
+          <button
+            type="button"
+            data-testid="back-to-sessions"
+            onClick={navigateBackToSessions}
+            className="mb-3.5 w-fit cursor-pointer border-none bg-transparent p-0 text-[12px] text-(--ink-soft)"
+          >
+            ← Back to sessions
+          </button>
+          <SessionDrilldown session={selectedSession} project={projectParam} />
+        </div>
       ) : (
         <>
           {activeTab === "dashboard" && (
             <div data-testid="tab-panel-dashboard">
-              <WarningBanner events={usageLimitEvents.data ?? []} onViewSession={handleViewSession} />
+              <WarningBanner events={usageLimitEvents.data ?? []} onViewSession={navigateToSession} />
 
               <div className="mb-4.5 flex flex-wrap gap-3" data-testid="meter-row">
                 <MeterBox
@@ -234,15 +272,13 @@ export function Dashboard() {
                 sessions={sessionRows}
                 multiProject={multiProject}
                 selectedSessionId={selectedSessionId}
-                onSelect={setSelectedSessionId}
+                onSelect={navigateToSession}
                 projectFilter={projectFilter}
                 onProjectFilterChange={setProjectFilter}
                 projectLabels={(projects.data ?? []).map((p) => p.label)}
                 sessionsRange={sessionsRange}
                 onSessionsRangeChange={setSessionsRange}
               />
-
-              {selectedSession && <SessionDrilldown session={selectedSession} project={projectParam} />}
             </div>
           )}
         </>
