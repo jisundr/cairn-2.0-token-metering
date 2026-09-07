@@ -179,9 +179,7 @@ export function Dashboard() {
 
                 <Panel>
                   <PanelTitle>Activity</PanelTitle>
-                  <p className="-mt-2 mb-1 text-[11px] text-(--ink-soft)">
-                    When calls happen, by hour of day — last 7 days.
-                  </p>
+                  <p className="-mt-2 mb-1 text-[11px] text-(--ink-soft)">Calls per day — last 7 days.</p>
                   <ActivityHeatmap calls={heatmap.data ?? []} />
                 </Panel>
 
